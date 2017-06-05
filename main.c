@@ -1,43 +1,8 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <time.h>
 #include <assert.h>
-#include <math.h>
 #include <windows.h>
-#include <GL/gl.h>
-
-#define GL_UNSIGNED_SHORT_4_4_4_4 0x8033
-
-typedef int8_t   int8;
-typedef int16_t  int16;
-typedef int32_t  int32;
-typedef int64_t  int64;
-typedef uint8_t  uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-typedef float    float32;
-typedef double   float64;
-typedef int16_t  fixed16;
-typedef fixed16  fixed16_6;
-typedef int32_t  fixed32;
-
-#define true 1
-#define false 0
-
-#define kilobyte 1000 
-#define megabyte 1000000
-
-#define uint16_max 65535
-#define uint16_min 0
-#define int16_max 32767
-#define int16_min -32768
-
-int16 abs_int16(int16 n)
-{
-    int16 result = ((n >> 15) ^ n) + ((uint16)n >> 15);
-    return result;
-}
+#include <glad/glad.h>
 
 #ifdef _MSC_VER
 #define printf printf_msvc
@@ -53,154 +18,489 @@ int printf_msvc(const char *format, ...)
 }
 #endif
 
-#define Msign_int16(n) ((n) >> 15)
-#define Msign_int32(n) ((n) >> 31)
+#include "stst_math.c"
 
-fixed32 mul_fixed16(uint8 fraction_bits, fixed16 a, fixed16 b) \
+struct Memory
 {
-    int32 result = (int32)a * b;
-    result = result >> fraction_bits;
-    return (fixed32)result; \
-}
-#define Mmul_fixed16_6(a, b) mul_fixed16(6, a, b)
+    uint8 *buffer;
+    uint64 size;
+    uint64 used;
+};
 
-void slow_print_fixed16(uint8 fraction_bits, fixed16 n)
+uint8 *alloc_push(struct Memory *memory, uint64 size)
 {
-    printf("%g\n", n / (float64)(1 << fraction_bits));
-}
-#define Mslow_print_fixed16_6(a, b) slow_print_fixed16(6, a, b)
-
-#define Mfixed16(fraction_bits, integer, fraction) \
-    ((fixed16)(((integer) << (fraction_bits)) | (fraction)))
-#define Mfixed16_neg(fraction_bits, integer, fraction) \
-    (~Mfixed16((fraction_bits), (integer), (fraction)) + 1)
-
-fixed16 shift_down_to_fixed16(fixed32 f, int current_fraction_bits, int new_fraction_bits)
-{
-    fixed16 result = f >> (current_fraction_bits - new_fraction_bits);
+    uint8 *result = memory->buffer;
+    memory->buffer += size;
+    memory->used += size;
+    assert(memory->used < memory->size);
     return result;
 }
 
-#define Mvec_def(type) \
-typedef union \
-{ \
-    struct \
-    { \
-        type x; \
-        type y; \
-        type z; \
-    }; \
-    struct \
-    { \
-        type u; \
-        type v; \
-        type w; \
-    }; \
-    struct \
-    { \
-        type r; \
-        type g; \
-        type b; \
-    }; \
-} vec3_##type; \
-\
-typedef union \
-{ \
-    struct \
-    { \
-        type x; \
-        type y; \
-    }; \
-    struct \
-    { \
-        type u; \
-        type v; \
-    }; \
-    struct \
-    { \
-        type r; \
-        type g; \
-    }; \
-} vec2_##type; \
-vec3_##type make_vec3_##type(type x, type y, type z) \
-{ \
-    vec3_##type result = { x, y, z }; \
-    return result; \
-} \
-vec3_##type add_vec3_##type(vec3_##type v1, vec3_##type v2) \
-{ \
-    vec3_##type result = { v1.x + v2.x, v1.y + v2.y, v1.z + v2.z }; \
-    return result; \
-} \
-vec3_##type sub_vec3_##type(vec3_##type v1, vec3_##type v2) \
-{ \
-    vec3_##type result = { v1.x - v2.x, v1.y - v2.y, v1.z - v2.z }; \
-    return result; \
-} \
-vec2_##type make_vec2_##type(type x, type y) \
-{ \
-    vec2_##type result = { x, y }; \
-    return result; \
-} \
-vec2_##type add_vec2_##type(vec2_##type v1, vec2_##type v2) \
-{ \
-    vec2_##type result = { v1.x + v2.x, v1.y + v2.y }; \
-    return result; \
-} \
-vec2_##type sub_vec2_##type(vec2_##type v1, vec2_##type v2) \
-{ \
-    vec2_##type result = { v1.x - v2.x, v1.y - v2.y }; \
-    return result; \
-} 
-
-// The "special" vector functions are the ones that differ between types
-// (in particular between fixed point types and all the other types)
-
-#define Mvec_special_function_def(type) \
-type dot_vec3_##type(vec3_##type v1, vec3_##type v2) \
-{ \
-    type result = v1.x * v2.x + v1.y * v2.y + v1.z + v2.z; \
-    return result; \
-} \
-type dot_vec2_##type(vec2_##type v1, vec2_##type v2) \
-{ \
-    type result = v1.x * v2.x + v1.y * v2.y; \
-    return result; \
+struct ReadFileResult
+{
+	enum
+	{
+		READ_FILE_SUCCESS,
+		READ_FILE_OPEN_FAILED,
+		READ_FILE_BUFFER_TOO_SMALL
+	} status;
+	char *buffer;
+	int64 error;
+	size_t size;
+};
+struct ReadFileResult readFile(const char *file_name, struct Memory *memory)
+{
+	struct ReadFileResult result;
+	result.size = 0;
+	FILE *file = fopen(file_name, "rb");
+	if (!file)
+	{
+		result.status = READ_FILE_OPEN_FAILED;
+		result.error = errno;
+		return result;
+	}
+	fseek(file, 0, SEEK_END);
+	long file_size = ftell(file);
+	result.buffer = alloc_push(memory, file_size + 1);
+	fseek(file, 0, SEEK_SET);
+	fread(result.buffer, file_size, 1, file);
+	fclose(file);
+	result.status = READ_FILE_SUCCESS;
+	result.size = file_size + 1;
+	return result;
 }
 
-#define Mvec_special_function_def_fixed16() \
-fixed32 dot_vec3_fixed16(uint8 fraction_bits, vec3_fixed16 v1, vec3_fixed16 v2) \
-{ \
-    fixed32 result = \
-        mul_fixed16(fraction_bits, v1.x, v2.x) + \
-        mul_fixed16(fraction_bits, v1.y, v2.y) + \
-        mul_fixed16(fraction_bits, v1.x, v2.x);  \
-    return result; \
-} \
-fixed32 dot_vec2_fixed16(uint8 fraction_bits, vec2_fixed16 v1, vec2_fixed16 v2) \
-{ \
-    fixed32 result = \
-        mul_fixed16(fraction_bits, v1.x, v2.x) + \
-        mul_fixed16(fraction_bits, v1.y, v2.y);  \
-    return result; \
+struct ReadFileResult readString(const char *file_name, struct Memory *memory)
+{
+	struct ReadFileResult result = readFile(file_name, memory);
+	if (result.status == READ_FILE_SUCCESS)
+	{
+		result.buffer[result.size] = 0;
+	}
+	return result;
 }
 
-#define dot_vec2_screen(v1, v2) dot_vec2_fixed16(6, v1, v2)
+#define array_length(array) (sizeof(array) / sizeof((array)[0]))
+#define hasFlag(flags, flag) (((flags) & (flag)) != 0)
 
-Mvec_def(uint8);
-Mvec_special_function_def(uint8);
-Mvec_def(fixed16);
-Mvec_special_function_def_fixed16();
-typedef vec2_fixed16 vec2_fixed16_6;
-typedef vec3_fixed16 vec3_fixed16_6;
+struct Substring
+{
+	char *start;
+	uint64 len;
+};
 
-#define mul_screen mul_fixed16_6
-#define screen_fraction_bits 6
-#define Mscreen_coord(integer, fraction) Mfixed16(6, integer, fraction)
+void printSubstring(struct Substring it)
+{
+	printf("%.*s", it.len, it.start);
+}
+
+int substringsEqual(struct Substring a, struct Substring b)
+{
+	if (a.len != b.len)
+	{
+		return false;
+	}
+	return strncmp(a.start, b.start, a.len) == 0;
+}
+
+int substringStringEqual(struct Substring a, const char* b)
+{
+	if (a.len != strlen(b))
+	{
+		return false;
+	}
+	return strncmp(a.start, b, a.len) == 0;
+}
+
+struct Substring peekWord(char *c)
+{
+	struct Substring result;
+	while (*c != 0 && isspace(*c))
+	{
+		c++;
+	}
+	result.start = c;
+	result.len = 0;
+	while (*c != 0 && !isspace(*c))
+	{
+		c++;
+		result.len++;
+	}
+	return result;
+}
+
+struct Substring nextWord(char** c)
+{
+	struct Substring result;
+	while (**c != 0 && isspace(**c))
+	{
+		(*c)++;
+	}
+	result.start = *c;
+	result.len = 0;
+	while (**c != 0 && !isspace(**c))
+	{
+		(*c)++;
+		result.len++;
+	}
+	return result;
+}
+
+struct AppState
+{
+   int8 renderer_sw; 
+};
+
+float32 triangle_vertices[] = 
+{
+	-1, -1,  0,
+	 1, -1,  0,
+	 0,  1,  0
+};
+
+enum
+{
+	c_AttribLocationVertices = 0,
+	c_AttribLocationColors = 1,
+	c_AttribLocationNormals = 2,
+	c_AttribLocationTexcoords = 3
+};
+
+enum
+{
+	f_MeshAttribVertices = 0x1,
+	f_MeshAttribColors = 0x2,
+	f_MeshAttribNormals = 0x4,
+	f_MeshAttribTexcoords = 0x8
+};
+struct StoredMesh
+{
+	vec3f  *vertices;
+	vec3f  *colors;
+	vec3f  *normals;
+	vec2f  *texcoords;
+	uint32 *indices;
+	uint32 num_vertices;
+	uint32 num_colors;
+	uint32 num_normals;
+	uint32 num_texcoords;
+	uint32 num_indices;
+	uint8  attrib_flags;
+};
+
+struct OpenGLMesh
+{
+	uint32 vertex_vbo;
+	uint32 color_vbo;
+	uint32 normal_vbo;
+	uint32 texcoord_vbo;
+	uint32 ebo;
+	uint32 vao;
+	struct StoredMesh *stored;
+};
+
+struct OpenGLShader
+{
+	uint32 id;
+	int32 u_model_view_projection;
+};
+
+void loadPly(const char *file_name, struct StoredMesh *stored_mesh, struct Memory *memory)
+{
+	int num_verts = 0;
+	int num_faces = 0;
+
+	struct ReadFileResult read_file_result = readString(file_name, memory);
+	if (read_file_result.status != READ_FILE_SUCCESS)
+	{
+		printf("Couldn't load PLY %s. Status: %i, Error: %i.\n", 
+			file_name, read_file_result.status, strerror(read_file_result.error));
+		exit(-1);
+	}
+	char *c = read_file_result.buffer;
+
+	while (!substringStringEqual(nextWord(&c), "element")) {};
+
+	if (substringStringEqual(nextWord(&c), "vertex"))
+	{
+		num_verts = atoi(nextWord(&c).start);
+		stored_mesh->num_vertices = num_verts;
+	}
+
+	stored_mesh->attrib_flags |= f_MeshAttribVertices;
+	while (!substringStringEqual(peekWord(c), "element"))
+	{
+		struct Substring w1 = nextWord(&c);
+		struct Substring w2 = nextWord(&c);
+		struct Substring w3 = nextWord(&c);
+		if (substringStringEqual(w1, "property") 
+		&&  substringStringEqual(w2, "float") 
+		&&  substringStringEqual(w3, "nx"))
+		{
+			stored_mesh->attrib_flags |= f_MeshAttribNormals;
+		}
+		if (substringStringEqual(w1, "property") 
+		&&  substringStringEqual(w2, "float") 
+		&&  substringStringEqual(w3, "s"))
+		{
+			stored_mesh->attrib_flags |= f_MeshAttribTexcoords;
+		}
+		if (substringStringEqual(w1, "property") 
+		&&  substringStringEqual(w2, "uchar") 
+		&&  substringStringEqual(w3, "red"))
+		{
+			stored_mesh->attrib_flags |= f_MeshAttribColors;
+		}
+	};
+	nextWord(&c);
+
+	if (substringStringEqual(nextWord(&c), "face"))
+	{
+		num_faces = atoi(nextWord(&c).start);
+	}
+	while (!substringStringEqual(nextWord(&c), "end_header")) {};
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
+	{
+		stored_mesh->vertices = alloc_push(memory, num_verts * sizeof(stored_mesh->vertices[0]) * 3);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
+	{
+		stored_mesh->colors = alloc_push(memory, num_verts * sizeof(stored_mesh->colors[0]) * 3);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
+	{
+		stored_mesh->normals = alloc_push(memory, num_verts * sizeof(stored_mesh->normals[0]) * 3);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
+	{
+		stored_mesh->texcoords = alloc_push(memory, num_verts * sizeof(stored_mesh->texcoords[0]) * 2);
+	}
+	stored_mesh->indices = alloc_push(memory, num_faces * sizeof(stored_mesh->indices[0]) * 4);
+
+	for (int i = 0; i<num_verts; i++)
+	{
+		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
+		{
+			stored_mesh->vertices[i].x = (float32)atof(nextWord(&c).start);
+			stored_mesh->vertices[i].y = (float32)atof(nextWord(&c).start);
+			stored_mesh->vertices[i].z = (float32)atof(nextWord(&c).start);
+		}
+		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
+		{
+			stored_mesh->texcoords[i].u = (float32)atof(nextWord(&c).start);
+			stored_mesh->texcoords[i].v = (float32)atof(nextWord(&c).start);
+		}
+		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
+		{
+			stored_mesh->normals[i].x = (float32)atof(nextWord(&c).start);
+			stored_mesh->normals[i].y = (float32)atof(nextWord(&c).start);
+			stored_mesh->normals[i].z = (float32)atof(nextWord(&c).start);
+		}
+		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
+		{
+			stored_mesh->colors[i].r = (float32)(atof(nextWord(&c).start) / 255);
+			stored_mesh->colors[i].g = (float32)(atof(nextWord(&c).start) / 255);
+			stored_mesh->colors[i].b = (float32)(atof(nextWord(&c).start) / 255);
+		}
+	}
+
+	int i = 0;
+	for (int f = 0; f<num_faces; f++)
+	{
+		auto points = atoi(nextWord(&c).start) - 3;
+		if (points < 0) continue; // can't do anything with a two-vertex face
+		uint32 first = atoi(nextWord(&c).start);
+		stored_mesh->indices[i++] = first;
+		stored_mesh->indices[i++] = atoi(nextWord(&c).start);
+		uint32 last = atoi(nextWord(&c).start);
+		stored_mesh->indices[i++] = last;
+		// begin triangle fan
+		for (int p = 0; p<points; p++)
+		{
+			stored_mesh->indices[i++] = first;
+			stored_mesh->indices[i++] = last;
+			last = atoi(nextWord(&c).start);
+			stored_mesh->indices[i++] = last;
+		}
+	}
+	stored_mesh->num_indices = i;
+}
+
+struct OpenGLMesh loadOpenGLMesh(struct StoredMesh *stored_mesh)
+{
+	struct OpenGLMesh result = { 0 };
+	result.stored = stored_mesh;
+	glGenVertexArrays(1, &result.vao);
+	glBindVertexArray(result.vao);
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
+	{
+		glGenBuffers(1, &result.vertex_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
+		glBufferData(
+			GL_ARRAY_BUFFER, 
+			stored_mesh->num_vertices * 3 * sizeof(float32),
+			stored_mesh->vertices,
+			GL_STATIC_DRAW);
+		glVertexAttribPointer(c_AttribLocationVertices, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
+		glEnableVertexAttribArray(c_AttribLocationVertices);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
+	{
+		glGenBuffers(1, &result.color_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, result.color_vbo);
+		glBufferData(
+			GL_ARRAY_BUFFER, 
+			stored_mesh->num_vertices * 3 * sizeof(float32),
+			stored_mesh->colors,
+			GL_STATIC_DRAW);
+		glVertexAttribPointer(c_AttribLocationColors, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
+		glEnableVertexAttribArray(c_AttribLocationColors);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
+	{
+		glGenBuffers(1, &result.normal_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo);
+		glBufferData(
+			GL_ARRAY_BUFFER, 
+			stored_mesh->num_vertices * 3 * sizeof(float32),
+			stored_mesh->normals,
+			GL_STATIC_DRAW);
+		glVertexAttribPointer(c_AttribLocationNormals, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
+		glEnableVertexAttribArray(c_AttribLocationNormals);
+	}
+	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
+	{
+		glGenBuffers(1, &result.texcoord_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, result.texcoord_vbo);
+		glBufferData(
+			GL_ARRAY_BUFFER, 
+			stored_mesh->num_vertices * 2 * sizeof(float32),
+			stored_mesh->texcoords,
+			GL_STATIC_DRAW);
+		glVertexAttribPointer(c_AttribLocationTexcoords, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float32), (void*)0);
+		glEnableVertexAttribArray(c_AttribLocationTexcoords);
+	}
+	glGenBuffers(1, &result.ebo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.ebo);
+	glBufferData(
+		GL_ELEMENT_ARRAY_BUFFER,
+		stored_mesh->num_indices * sizeof(uint32),
+		stored_mesh->indices,
+		GL_STATIC_DRAW);
+	return result;
+}
 
 #define Mpixel_word(r, g, b) ((r & 15) << 12) | ((g & 15) << 8) | ((b & 15) << 4);
 
+#define min_face_vertices 3
 #define max_face_vertices 8
+
+struct Framebuffer
+{
+    uint8 *data;
+    uint32 size;
+    int32 width;
+    int32 height;
+    uint8 pixel_size;
+    uint32 pixel_num;
+};
+
+void renderer_draw_face(struct Framebuffer *framebuffer, int num_vertices, vec2f *vertices, vec3u *colors)
+{
+    assert(num_vertices >= min_face_vertices);
+    assert(num_vertices <= max_face_vertices);
+
+	vec2f min_corner = { INFINITY, INFINITY };
+	vec2f max_corner = { -INFINITY, -INFINITY };
+    for (int i=0; i<num_vertices; i++)
+    {
+        vec2f p = vertices[i];
+        if (p.x < min_corner.x)
+        {
+            min_corner.x = p.x;
+        }
+        if (p.y < min_corner.y)
+        {
+            min_corner.y = p.y;
+        }
+        if (p.x > max_corner.x)
+        {
+            max_corner.x = p.x;
+        }
+        if (p.y > max_corner.y)
+        {
+            max_corner.y = p.y;
+        }
+    }
+
+    min_corner.x = (float32)floor(min_corner.x);
+    min_corner.y = (float32)floor(min_corner.y);
+    max_corner.x = (float32)ceil(max_corner.x);
+    max_corner.y = (float32)ceil(max_corner.y);
+
+    if (min_corner.x < 0)
+    {
+        min_corner.x = 0;
+    }
+    if (min_corner.x >= framebuffer->width)
+    {
+        min_corner.x = (float32)(framebuffer->width - 1);
+    }
+    if (min_corner.y < 0)
+    {
+        min_corner.y = 0;
+    }
+    if (min_corner.y >= framebuffer->height)
+    {
+        min_corner.y = (float32)(framebuffer->height - 1);
+    }
+
+    vec2f perps[min_face_vertices];
+    vec2f lines[min_face_vertices];
+    int vertex_indices[3] = { 0, 1, 2 };
+    for (int vi=2; vi<num_vertices; vi++)
+    {
+        for (int i=0; i<min_face_vertices; i++)
+        {
+            int next = i + 1;
+            if (next > 2) next = 0;
+            lines[i] = sub_vec2_float32(vertices[vertex_indices[next]], vertices[vertex_indices[i]]);
+            perps[i].x = -lines[i].y;
+            perps[i].y =  lines[i].x;
+        }
+
+        for (int y = (int)min_corner.y; y <= (int)max_corner.y; y++)
+        {
+            for (int x = (int)min_corner.x; x <= (int)max_corner.x; x++)
+            {
+                vec2f pixel_vec_abs = make_vec2_float32(x + 0.5f, y + 0.5f);
+                int16 last_dp_sign;
+                int fail = false;
+                for (int i=0; i<min_face_vertices; i++)
+                {
+                    vec2f pixel_vec_rel = 
+                        sub_vec2_float32(pixel_vec_abs, vertices[vertex_indices[i]]);
+                    float32 dp = dot_vec2_float32(pixel_vec_rel, perps[i]);
+                    int16 dp_sign = sign_float32(dp);
+                    if (i > 0 && dp_sign != last_dp_sign)
+                    {
+                        fail = true;
+                        break;
+                    }
+                    last_dp_sign = dp_sign;
+                }
+                if (fail) continue;
+
+                vec3_uint8 color = colors[0];
+                uint16 *pixel = (uint16*)framebuffer->data + (y * framebuffer->width + x);
+                *pixel = Mpixel_word(color.r, color.g, color.b);
+            }
+        }
+
+        vertex_indices[1]++;
+        vertex_indices[2]++;
+    }
+}
 
 LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -231,221 +531,203 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     return DefWindowProc(window, message, wParam, lParam);
 }
 
-typedef struct 
-{
-    uint8 *buffer;
-    uint64 size;
-    uint64 used;
-} Memory;
-
-uint8 *push_alloc(Memory *memory, uint64 size)
-{
-    uint8 *result = memory->buffer;
-    memory->buffer += size;
-    memory->used += size;
-    assert(memory->used < memory->size);
-    return result;
-}
-
-typedef struct
-{
-    uint8 *data;
-    uint32 size;
-    int32 width;
-    int32 height;
-    uint8 pixel_size;
-    uint32 pixel_num;
-} Framebuffer;
-
-void renderer_draw_face(Framebuffer *framebuffer, vec2_fixed16_6 *vertices, int num_vertices, vec3_uint8 color)
-{
-    vec2_fixed16 min_corner = { int16_max, int16_max };
-    vec2_fixed16 max_corner = { int16_min, int16_min };
-    for (int i=0; i<num_vertices; i++)
-    {
-        vec2_fixed16 p = vertices[i];
-        if (p.x < min_corner.x)
-        {
-            min_corner.x = p.x;
-        }
-        if (p.y < min_corner.y)
-        {
-            min_corner.y = p.y;
-        }
-        if (p.x > max_corner.x)
-        {
-            max_corner.x = p.x;
-        }
-        if (p.y > max_corner.y)
-        {
-            max_corner.y = p.y;
-        }
-    }
-
-    min_corner.x = min_corner.x >> screen_fraction_bits;
-    min_corner.y = min_corner.y >> screen_fraction_bits;
-    max_corner.x = (max_corner.x + (1 << (screen_fraction_bits-1))) >> screen_fraction_bits;
-    max_corner.y = (max_corner.y + (1 << (screen_fraction_bits-1))) >> screen_fraction_bits;
-
-    if (min_corner.x < 0)
-    {
-        min_corner.x = 0;
-    }
-    if (min_corner.x >= framebuffer->width)
-    {
-        min_corner.x = framebuffer->width - 1;
-    }
-    if (min_corner.y < 0)
-    {
-        min_corner.y = 0;
-    }
-    if (min_corner.y >= framebuffer->height)
-    {
-        min_corner.y = framebuffer->height - 1;
-    }
-
-    vec2_fixed16 perps[max_face_vertices];
-    for (int i=0; i<num_vertices; i++)
-    {
-        int next = i + 1;
-        if (next > 2) next = 0;
-        vec2_fixed16 line = sub_vec2_fixed16(vertices[next], vertices[i]);
-        perps[i].x = -line.y;
-        perps[i].y =  line.x;
-    }
-
-    for (int16 y = min_corner.y; y <= max_corner.y; y++)
-    {
-        for (int16 x = min_corner.x; x <= max_corner.x; x++)
-        {
-            vec2_fixed16 pixel_vec_abs = make_vec2_fixed16(
-                Mscreen_coord(x, 1 << (screen_fraction_bits-1)), 
-                Mscreen_coord(y, 1 << (screen_fraction_bits-1)));
-            int16 last_dp_sign;
-            int fail = false;
-            for (int i=0; i<num_vertices; i++)
-            {
-                vec2_fixed16 pixel_vec_rel = sub_vec2_fixed16(pixel_vec_abs, vertices[i]);
-                fixed32 dp = dot_vec2_screen(pixel_vec_rel, perps[i]);
-                int16 dp_sign = Msign_int32(dp);
-                if (i > 0 && dp_sign != last_dp_sign)
-                {
-                    fail = true;
-                    break;
-                }
-                last_dp_sign = dp_sign;
-            }
-            if (fail) continue;
-
-            uint16 *pixel = (uint16*)framebuffer->data + (y * framebuffer->width + x);
-            *pixel = Mpixel_word(color.r, color.g, color.b);
-        }
-    }
-}
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
 {
-    uint32 screen_width = 384;
-    uint32 screen_height = 256;
-    uint8 window_scale = 3;
-    uint32 window_display_width  = screen_width * window_scale; 
-    uint32 window_display_height = screen_height * window_scale;
+	uint32 screen_width = 384;
+	uint32 screen_height = 256;
+	uint8 window_scale = 3;
+	uint32 window_display_width = screen_width * window_scale;
+	uint32 window_display_height = screen_height * window_scale;
 
-    WNDCLASS wc = {0};
-    wc.lpfnWndProc = windowProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = "Arnold";
-    RegisterClass(&wc);
+	WNDCLASS wc = { 0 };
+	wc.lpfnWndProc = windowProc;
+	wc.hInstance = hInstance;
+	wc.lpszClassName = "STST";
+	RegisterClass(&wc);
 
-    DWORD window_style = WS_BORDER | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    RECT window_rect;
-    window_rect.left   = 0;
-    window_rect.top    = 0;
-    window_rect.right  = window_display_width;
-    window_rect.bottom = window_display_height;
-    AdjustWindowRectEx(&window_rect, window_style, 0, 0);
+	DWORD window_style = WS_BORDER | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+	RECT window_rect;
+	window_rect.left = 0;
+	window_rect.top = 0;
+	window_rect.right = window_display_width;
+	window_rect.bottom = window_display_height;
+	AdjustWindowRectEx(&window_rect, window_style, 0, 0);
 
-    HWND window = CreateWindowEx(
-        0,
-        wc.lpszClassName,
-        "Window",
-        window_style,
-        30, 30,
-        window_rect.right  - window_rect.left, 
-        window_rect.bottom - window_rect.top,
-        NULL,
-        NULL,
-        hInstance,
-        NULL);
-    if (!window)
-    {
-        DWORD error_code = GetLastError();
-        printf("Error creating the window. Error code is: %u.\n", error_code);
-        return -1;
-    }
+	HWND window = CreateWindowEx(
+		0,
+		wc.lpszClassName,
+		"Window",
+		window_style,
+		30, 30,
+		window_rect.right - window_rect.left,
+		window_rect.bottom - window_rect.top,
+		NULL,
+		NULL,
+		hInstance,
+		NULL);
+	if (!window)
+	{
+		DWORD error_code = GetLastError();
+		printf("Error creating the window. Error code is: %u.\n", error_code);
+		return -1;
+	}
 
-    HDC device_context = GetDC(window);
-    PIXELFORMATDESCRIPTOR pixel_format = {0};
-    pixel_format.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-    pixel_format.nVersion = 1;
-    pixel_format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    pixel_format.iPixelType = PFD_TYPE_RGBA;
-    pixel_format.cColorBits = 32;
-    pixel_format.cAlphaBits = 8;
-    pixel_format.iLayerType = PFD_MAIN_PLANE;
-    int pixel_format_index = ChoosePixelFormat(device_context, &pixel_format);
-    DescribePixelFormat(device_context, pixel_format_index, sizeof(PIXELFORMATDESCRIPTOR), &pixel_format);
-    SetPixelFormat(device_context, pixel_format_index, &pixel_format);
+	HDC device_context = GetDC(window);
+	PIXELFORMATDESCRIPTOR pixel_format = { 0 };
+	pixel_format.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+	pixel_format.nVersion = 1;
+	pixel_format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	pixel_format.iPixelType = PFD_TYPE_RGBA;
+	pixel_format.cColorBits = 32;
+	pixel_format.cAlphaBits = 8;
+	pixel_format.iLayerType = PFD_MAIN_PLANE;
+	int pixel_format_index = ChoosePixelFormat(device_context, &pixel_format);
+	DescribePixelFormat(device_context, pixel_format_index, sizeof(PIXELFORMATDESCRIPTOR), &pixel_format);
+	SetPixelFormat(device_context, pixel_format_index, &pixel_format);
 
-    HGLRC render_context = wglCreateContext(device_context);
-    if (!render_context)
-    {
-        DWORD error_code = GetLastError();
-        printf("Error creating OpenGL context. Error code is: %u.\n", error_code);
-        return -1;
-    }
-    if (!wglMakeCurrent(device_context, render_context))
-    {
-        DWORD error_code = GetLastError();
-        printf("OpenGL initialization error. Error code is: %u.\n", error_code);
-        return -1;
-    }
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	HGLRC render_context = wglCreateContext(device_context);
+	if (!render_context)
+	{
+		DWORD error_code = GetLastError();
+		printf("Error creating OpenGL context. Error code is: %u.\n", error_code);
+		return -1;
+	}
+	if (!wglMakeCurrent(device_context, render_context))
+	{
+		DWORD error_code = GetLastError();
+		printf("OpenGL initialization error. Error code is: %u.\n", error_code);
+		return -1;
+	}
+	if (!gladLoadGL())
+	{
+		printf("GLAD initialization error.\n");
+		return -1;
+	}
+	glEnable(GL_TEXTURE_2D);
+	glClampColor(GL_CLAMP_READ_COLOR, GL_TRUE);
 
-    Memory memory;
-    memory.size = 3*megabyte;
-    memory.used = 0;
-    memory.buffer = VirtualAlloc(0, memory.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!memory.buffer)
-    {
-        DWORD error_code = GetLastError();
-        printf("Could not allocate. Error code is: %u. Bye.\n", error_code);
-        return -1;
-    }
+	struct Memory memory;
+	memory.size = 50 * megabyte;
+	memory.used = 0;
+	memory.buffer = VirtualAlloc(0, memory.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (!memory.buffer)
+	{
+		DWORD error_code = GetLastError();
+		printf("Could not allocate. Error code is: %u. Bye.\n", error_code);
+		return -1;
+	}
+	struct Memory perm_section;
+	perm_section.size = 3 * megabyte;
+	perm_section.used = 0;
+	perm_section.buffer = alloc_push(&memory, perm_section.size);
+	struct Memory temp_section;
+	temp_section.size = 3 * megabyte;
+	temp_section.used = 0;
+	temp_section.buffer = alloc_push(&memory, temp_section.size);
 
-    Framebuffer framebuffer;
+    struct AppState *app_state = alloc_push(&perm_section, sizeof(struct AppState));
+    app_state->renderer_sw = false;
+
+	struct StoredMesh cube_mesh = { 0 };
+	loadPly("assets/cube.ply", &cube_mesh, &perm_section);
+
+	struct OpenGLMesh opengl_cube_mesh;
+
+	struct OpenGLShader opengl_shader;
+
+	if (app_state->renderer_sw)
+	{
+
+	}
+	else
+	{
+		glViewport(0, 0, window_display_width, window_display_height);
+		glEnable(GL_DEPTH_TEST);
+
+		uint32 vertex_shader;
+		vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+		struct ReadFileResult vertex_shader_src = readString("assets/default.vertex", &temp_section);
+		if (vertex_shader_src.status != READ_FILE_SUCCESS)
+		{
+			printf("Error loading vertex shader.\n");
+			exit(-1);
+		}
+		glShaderSource(vertex_shader, 1, &vertex_shader_src.buffer, NULL);
+		glCompileShader(vertex_shader);
+		int successful ;
+		char info[512];
+		glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
+		if (!successful)
+		{
+			glGetShaderInfoLog(vertex_shader, 512, NULL, info);
+			printf("Error compiling vertex shader.\n");
+			exit(-1);
+		}
+
+		uint32 fragment_shader;
+		fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+		struct ReadFileResult fragment_shader_src = readString("assets/default.fragment", &temp_section);
+		if (fragment_shader_src.status != READ_FILE_SUCCESS)
+		{
+			printf("Error loading fragment shader.\n");
+			exit(-1);
+		}
+		glShaderSource(fragment_shader, 1, &fragment_shader_src.buffer, NULL);
+		glCompileShader(fragment_shader);
+		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
+		if (!successful)
+		{
+			glGetShaderInfoLog(fragment_shader, 512, NULL, info);
+			printf("Error compiling fragment shader.\n");
+			exit(-1);
+		}
+
+		opengl_shader.id = glCreateProgram();
+		glAttachShader(opengl_shader.id, vertex_shader);
+		glAttachShader(opengl_shader.id, fragment_shader);
+		glLinkProgram(opengl_shader.id);
+		glGetProgramiv(opengl_shader.id, GL_LINK_STATUS, &successful);
+		if (!successful)
+		{
+			glGetProgramInfoLog(opengl_shader.id, 512, NULL, info);
+			printf("Error linking shader program.\n");
+			exit(-1);
+		}
+		
+		glDeleteShader(vertex_shader);
+		glDeleteShader(fragment_shader);
+
+		opengl_shader.u_model_view_projection = glGetUniformLocation(opengl_shader.id, "model_view_projection");
+
+		opengl_cube_mesh = loadOpenGLMesh(&cube_mesh);
+	}
+
+    struct Framebuffer framebuffer;
     framebuffer.width = screen_width;
     framebuffer.height = screen_height;
     framebuffer.pixel_size = 2;
     framebuffer.pixel_num = framebuffer.width * framebuffer.height;
     framebuffer.size = framebuffer.pixel_num * framebuffer.pixel_size;
-    framebuffer.data = push_alloc(&memory, framebuffer.size);
+    framebuffer.data = alloc_push(&perm_section, framebuffer.size);
 
-    printf("Memory size: %u.\nFramebuffer size: %u.\nMemory remaining after framebuffer allocation: %u.\n",
-        (uint32)memory.size, framebuffer.size, memory.size - memory.used);
+    LARGE_INTEGER perf_freq;
+    QueryPerformanceFrequency(&perf_freq);
 
-    uint16 goose = 0;
     srand((uint32)time(NULL));
     uint32 seed = rand();
 
     ShowWindow(window, nCmdShow);
 
+	temp_section.used = 0;
+
+	float32 goose = 0;
+
     int running = true;
     while (running)
     {
+        LARGE_INTEGER perf_counter_start;
+        QueryPerformanceCounter(&perf_counter_start);
+
         MSG msg = {0};
         while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
@@ -461,64 +743,66 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
             }
         }
 
-        goose++;
-
-        for (uint16 y = 0; y < framebuffer.height; y++)
+        if (app_state->renderer_sw)
         {
-            for (uint16 x = 0; x < framebuffer.width; x++)
+			glBindTexture(GL_TEXTURE_2D, 1);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            for (uint32 p = 0; p < framebuffer.pixel_num; p++)
             {
-                uint16 *pixel = (uint16*)framebuffer.data + (y * framebuffer.width + x);
-                *pixel = 0;
-                *pixel = Mpixel_word(x, y, y / 16 + goose);
+                uint16 *pixel = (uint16*)framebuffer.data + p;
+                *pixel = Mpixel_word(0, 255, 0);
             }
-        }
 
-        /*
-        for (uint32 p = 0; p < framebuffer.pixel_num; p++)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8,
+                framebuffer.width, framebuffer.height,
+                0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, framebuffer.data);
+            glBegin(GL_TRIANGLES);
+            glTexCoord2i(0, 0); glVertex2i(-1, -1);
+            glTexCoord2i(1, 0); glVertex2i(1, -1);
+            glTexCoord2i(0, 1); glVertex2i(-1, 1);
+            glTexCoord2i(1, 1); glVertex2i(1, 1);
+            glTexCoord2i(0, 1); glVertex2i(-1, 1);
+            glTexCoord2i(1, 0); glVertex2i(1, -1);
+            glEnd();
+        }
+        else
         {
-            uint16 *pixel = (uint16*)framebuffer.data + p;
-            *pixel = Mpixel_word(0, 0, 0);
-        }
-        */
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        srand(seed);
-        for (int i=0; i<1000; i++)
-        {
-            vec2_fixed16 points[3] = 
-            {
-                {
-                    Mscreen_coord(rand() & 255 + 90, rand() & 64),
-                    Mscreen_coord(rand() & 255, rand() & 64),
-                },
-                {
-                    Mscreen_coord(rand() & 255 + 90, rand() & 64),
-                    Mscreen_coord(rand() & 255, rand() & 64),
-                },
-                {
-                    Mscreen_coord(rand() & 255 + 90, rand() & 64),
-                    Mscreen_coord(rand() & 255, rand() & 64),
-                }
-            };
-
-            renderer_draw_face(
-                &framebuffer,
-                points, 3,
-                make_vec3_uint8(goose*i / 30, goose*i / 15, 15 - (goose*i / 15)));
+			glUseProgram(opengl_shader.id);
+			// mat4 transformation = perspective_projection_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8);
+			// mat4 transformation = identity_mat4();
+			mat4 transformation =
+				mult_mat4(
+					perspective_projection_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8),
+					mult_mat4(
+						translate_mat4(make_vec3f(0, 0, -4)),
+						rotate_mat4(make_vec3f(0, 1, 0), goose)));
+			goose += 0.05;
+			if (goose > 2*M_PI)
+			{
+				goose -= 2*M_PI;
+			}
+			glUniformMatrix4fv(opengl_shader.u_model_view_projection, 1, GL_TRUE, &transformation);
+			glBindVertexArray(opengl_cube_mesh.vao);
+			glDrawElements(GL_TRIANGLES, opengl_cube_mesh.stored->num_indices, GL_UNSIGNED_INT, 0);
         }
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8,
-            framebuffer.width, framebuffer.height,
-            0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, framebuffer.data);
-        glBegin(GL_TRIANGLES);
-        glTexCoord2i(0, 0); glVertex2i(-1, -1);
-        glTexCoord2i(1, 0); glVertex2i( 1, -1);
-        glTexCoord2i(0, 1); glVertex2i(-1,  1);
-        glTexCoord2i(1, 1); glVertex2i( 1,  1);
-        glTexCoord2i(0, 1); glVertex2i(-1,  1);
-        glTexCoord2i(1, 0); glVertex2i( 1, -1);
-        glEnd();
         SwapBuffers(device_context);
-    }
+
+		/*
+		LARGE_INTEGER perf_counter_end;
+		QueryPerformanceCounter(&perf_counter_end);
+		LARGE_INTEGER ticks_elapsed;
+		ticks_elapsed.QuadPart = perf_counter_end.QuadPart - perf_counter_start.QuadPart;
+		double seconds_elapsed = (double)ticks_elapsed.QuadPart / (double)perf_freq.QuadPart;
+		printf("Seconds elapsed: %f, Ticks elapsed: %I64d, Ticks per second: %I64d\n",
+			seconds_elapsed, ticks_elapsed, perf_freq.QuadPart);
+		*/
+	}
 
     return 0;
 }
