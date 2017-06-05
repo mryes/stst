@@ -646,77 +646,68 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
 	struct StoredMesh cube_mesh = { 0 };
 	load_ply("assets/cube.ply", &cube_mesh, &perm_section, &temp_section);
-
-	struct OpenGLMesh opengl_cube_mesh;
+	struct OpenGLMesh opengl_cube_mesh = load_opengl_mesh(&cube_mesh);
 
 	struct OpenGLShader opengl_shader;
 
-	if (app_state->renderer_sw)
-	{
+    glViewport(0, 0, window_display_width, window_display_height);
+    glEnable(GL_DEPTH_TEST);
 
-	}
-	else
-	{
-		glViewport(0, 0, window_display_width, window_display_height);
-		glEnable(GL_DEPTH_TEST);
+    uint32 vertex_shader;
+    vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+    struct ReadFileResult vertex_shader_src = read_string("assets/default.vertex", &temp_section);
+    if (vertex_shader_src.status != READ_FILE_SUCCESS)
+    {
+        printf("Error loading vertex shader.\n");
+        exit(-1);
+    }
+    glShaderSource(vertex_shader, 1, (const GLchar* const*)&vertex_shader_src.buffer, NULL);
+    glCompileShader(vertex_shader);
+    int successful;
+    char info[512];
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
+    if (!successful)
+    {
+        glGetShaderInfoLog(vertex_shader, 512, NULL, info);
+        printf("Error compiling vertex shader.\n");
+        exit(-1);
+    }
 
-		uint32 vertex_shader;
-		vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-		struct ReadFileResult vertex_shader_src = read_string("assets/default.vertex", &temp_section);
-		if (vertex_shader_src.status != READ_FILE_SUCCESS)
-		{
-			printf("Error loading vertex shader.\n");
-			exit(-1);
-		}
-		glShaderSource(vertex_shader, 1, (const GLchar* const*)&vertex_shader_src.buffer, NULL);
-		glCompileShader(vertex_shader);
-		int successful;
-		char info[512];
-		glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
-		if (!successful)
-		{
-			glGetShaderInfoLog(vertex_shader, 512, NULL, info);
-			printf("Error compiling vertex shader.\n");
-			exit(-1);
-		}
+    uint32 fragment_shader;
+    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+    struct ReadFileResult fragment_shader_src = read_string("assets/default.fragment", &temp_section);
+    if (fragment_shader_src.status != READ_FILE_SUCCESS)
+    {
+        printf("Error loading fragment shader.\n");
+        exit(-1);
+    }
+    glShaderSource(fragment_shader, 1, (const GLchar* const*)&fragment_shader_src.buffer, NULL);
+    glCompileShader(fragment_shader);
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
+    if (!successful)
+    {
+        glGetShaderInfoLog(fragment_shader, 512, NULL, info);
+        printf("Error compiling fragment shader.\n");
+        exit(-1);
+    }
 
-		uint32 fragment_shader;
-		fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-		struct ReadFileResult fragment_shader_src = read_string("assets/default.fragment", &temp_section);
-		if (fragment_shader_src.status != READ_FILE_SUCCESS)
-		{
-			printf("Error loading fragment shader.\n");
-			exit(-1);
-		}
-		glShaderSource(fragment_shader, 1, (const GLchar* const*)&fragment_shader_src.buffer, NULL);
-		glCompileShader(fragment_shader);
-		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
-		if (!successful)
-		{
-			glGetShaderInfoLog(fragment_shader, 512, NULL, info);
-			printf("Error compiling fragment shader.\n");
-			exit(-1);
-		}
+    opengl_shader.id = glCreateProgram();
+    glAttachShader(opengl_shader.id, vertex_shader);
+    glAttachShader(opengl_shader.id, fragment_shader);
+    glLinkProgram(opengl_shader.id);
+    glGetProgramiv(opengl_shader.id, GL_LINK_STATUS, &successful);
+    if (!successful)
+    {
+        glGetProgramInfoLog(opengl_shader.id, 512, NULL, info);
+        printf("Error linking shader program.\n");
+        exit(-1);
+    }
+    
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
 
-		opengl_shader.id = glCreateProgram();
-		glAttachShader(opengl_shader.id, vertex_shader);
-		glAttachShader(opengl_shader.id, fragment_shader);
-		glLinkProgram(opengl_shader.id);
-		glGetProgramiv(opengl_shader.id, GL_LINK_STATUS, &successful);
-		if (!successful)
-		{
-			glGetProgramInfoLog(opengl_shader.id, 512, NULL, info);
-			printf("Error linking shader program.\n");
-			exit(-1);
-		}
-		
-		glDeleteShader(vertex_shader);
-		glDeleteShader(fragment_shader);
+    opengl_shader.u_model_view_projection = glGetUniformLocation(opengl_shader.id, "model_view_projection");
 
-		opengl_shader.u_model_view_projection = glGetUniformLocation(opengl_shader.id, "model_view_projection");
-
-		opengl_cube_mesh = load_opengl_mesh(&cube_mesh);
-	}
 
     struct Framebuffer framebuffer;
     framebuffer.width = screen_width;
@@ -785,7 +776,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         }
         else
         {
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			glUseProgram(opengl_shader.id);
