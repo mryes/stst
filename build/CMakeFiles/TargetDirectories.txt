@@ -1,0 +1,3 @@
+C:/Users/adomenico/Documents/elsew/mingw/msys/1.0/home/ADOMENICO/stst/build/CMakeFiles/stst.dir
+C:/Users/adomenico/Documents/elsew/mingw/msys/1.0/home/ADOMENICO/stst/build/CMakeFiles/edit_cache.dir
+C:/Users/adomenico/Documents/elsew/mingw/msys/1.0/home/ADOMENICO/stst/build/CMakeFiles/rebuild_cache.dir

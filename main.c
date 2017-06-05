@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <ctype.h>
 #include <time.h>
 #include <assert.h>
 #include <windows.h>
@@ -17,6 +18,9 @@ int printf_msvc(const char *format, ...)
     return result;
 }
 #endif
+
+#define array_length(array) (sizeof(array) / sizeof((array)[0]))
+#define hasFlag(flags, flag) (((flags) & (flag)) != 0)
 
 #include "stst_math.c"
 
@@ -48,7 +52,7 @@ struct ReadFileResult
 	int64 error;
 	size_t size;
 };
-struct ReadFileResult readFile(const char *file_name, struct Memory *memory)
+struct ReadFileResult read_file(const char *file_name, struct Memory *memory)
 {
 	struct ReadFileResult result;
 	result.size = 0;
@@ -70,9 +74,9 @@ struct ReadFileResult readFile(const char *file_name, struct Memory *memory)
 	return result;
 }
 
-struct ReadFileResult readString(const char *file_name, struct Memory *memory)
+struct ReadFileResult read_string(const char *file_name, struct Memory *memory)
 {
-	struct ReadFileResult result = readFile(file_name, memory);
+	struct ReadFileResult result = read_file(file_name, memory);
 	if (result.status == READ_FILE_SUCCESS)
 	{
 		result.buffer[result.size] = 0;
@@ -80,21 +84,18 @@ struct ReadFileResult readString(const char *file_name, struct Memory *memory)
 	return result;
 }
 
-#define array_length(array) (sizeof(array) / sizeof((array)[0]))
-#define hasFlag(flags, flag) (((flags) & (flag)) != 0)
-
 struct Substring
 {
 	char *start;
 	uint64 len;
 };
 
-void printSubstring(struct Substring it)
+void print_substr(struct Substring it)
 {
 	printf("%.*s", it.len, it.start);
 }
 
-int substringsEqual(struct Substring a, struct Substring b)
+int eq_substr(struct Substring a, struct Substring b)
 {
 	if (a.len != b.len)
 	{
@@ -103,7 +104,7 @@ int substringsEqual(struct Substring a, struct Substring b)
 	return strncmp(a.start, b.start, a.len) == 0;
 }
 
-int substringStringEqual(struct Substring a, const char* b)
+int eq_substr_str(struct Substring a, const char* b)
 {
 	if (a.len != strlen(b))
 	{
@@ -112,7 +113,7 @@ int substringStringEqual(struct Substring a, const char* b)
 	return strncmp(a.start, b, a.len) == 0;
 }
 
-struct Substring peekWord(char *c)
+struct Substring peek_word(char *c)
 {
 	struct Substring result;
 	while (*c != 0 && isspace(*c))
@@ -129,7 +130,7 @@ struct Substring peekWord(char *c)
 	return result;
 }
 
-struct Substring nextWord(char** c)
+struct Substring next_word(char** c)
 {
 	struct Substring result;
 	while (**c != 0 && isspace(**c))
@@ -149,13 +150,6 @@ struct Substring nextWord(char** c)
 struct AppState
 {
    int8 renderer_sw; 
-};
-
-float32 triangle_vertices[] = 
-{
-	-1, -1,  0,
-	 1, -1,  0,
-	 0,  1,  0
 };
 
 enum
@@ -205,12 +199,13 @@ struct OpenGLShader
 	int32 u_model_view_projection;
 };
 
-void loadPly(const char *file_name, struct StoredMesh *stored_mesh, struct Memory *memory)
+void load_ply(
+    const char *file_name, struct StoredMesh *stored_mesh,
+    struct Memory *perm_section, struct Memory *temp_section)
 {
-	int num_verts = 0;
-	int num_faces = 0;
+    uint64 temp_section_last = temp_section->used;
 
-	struct ReadFileResult read_file_result = readString(file_name, memory);
+	struct ReadFileResult read_file_result = read_string(file_name, temp_section);
 	if (read_file_result.status != READ_FILE_SUCCESS)
 	{
 		printf("Couldn't load PLY %s. Status: %i, Error: %i.\n", 
@@ -219,114 +214,135 @@ void loadPly(const char *file_name, struct StoredMesh *stored_mesh, struct Memor
 	}
 	char *c = read_file_result.buffer;
 
-	while (!substringStringEqual(nextWord(&c), "element")) {};
+	while (!eq_substr_str(next_word(&c), "element")) {};
 
-	if (substringStringEqual(nextWord(&c), "vertex"))
+	uint64 num_verts = 0;
+	if (eq_substr_str(next_word(&c), "vertex"))
 	{
-		num_verts = atoi(nextWord(&c).start);
+		num_verts = atoi(next_word(&c).start);
 		stored_mesh->num_vertices = num_verts;
 	}
 
 	stored_mesh->attrib_flags |= f_MeshAttribVertices;
-	while (!substringStringEqual(peekWord(c), "element"))
+	while (!eq_substr_str(peek_word(c), "element"))
 	{
-		struct Substring w1 = nextWord(&c);
-		struct Substring w2 = nextWord(&c);
-		struct Substring w3 = nextWord(&c);
-		if (substringStringEqual(w1, "property") 
-		&&  substringStringEqual(w2, "float") 
-		&&  substringStringEqual(w3, "nx"))
+		struct Substring w1 = next_word(&c);
+		struct Substring w2 = next_word(&c);
+		struct Substring w3 = next_word(&c);
+		if (eq_substr_str(w1, "property") 
+		&&  eq_substr_str(w2, "float") 
+		&&  eq_substr_str(w3, "nx"))
 		{
 			stored_mesh->attrib_flags |= f_MeshAttribNormals;
 		}
-		if (substringStringEqual(w1, "property") 
-		&&  substringStringEqual(w2, "float") 
-		&&  substringStringEqual(w3, "s"))
+		if (eq_substr_str(w1, "property") 
+		&&  eq_substr_str(w2, "float") 
+		&&  eq_substr_str(w3, "s"))
 		{
 			stored_mesh->attrib_flags |= f_MeshAttribTexcoords;
 		}
-		if (substringStringEqual(w1, "property") 
-		&&  substringStringEqual(w2, "uchar") 
-		&&  substringStringEqual(w3, "red"))
+		if (eq_substr_str(w1, "property") 
+		&&  eq_substr_str(w2, "uchar") 
+		&&  eq_substr_str(w3, "red"))
 		{
 			stored_mesh->attrib_flags |= f_MeshAttribColors;
 		}
 	};
-	nextWord(&c);
 
-	if (substringStringEqual(nextWord(&c), "face"))
+	next_word(&c);
+
+	uint64 num_faces = 0;
+	if (eq_substr_str(next_word(&c), "face"))
 	{
-		num_faces = atoi(nextWord(&c).start);
+		num_faces = atoi(next_word(&c).start);
 	}
-	while (!substringStringEqual(nextWord(&c), "end_header")) {};
+
+	while (!eq_substr_str(next_word(&c), "end_header")) {};
+
 	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
 	{
-		stored_mesh->vertices = alloc_push(memory, num_verts * sizeof(stored_mesh->vertices[0]) * 3);
+		stored_mesh->vertices = (vec3f*)alloc_push(
+            perm_section, num_verts * sizeof(stored_mesh->vertices[0]) * 3);
 	}
 	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
 	{
-		stored_mesh->colors = alloc_push(memory, num_verts * sizeof(stored_mesh->colors[0]) * 3);
+		stored_mesh->colors = (vec3f*)alloc_push(
+            perm_section, num_verts * sizeof(stored_mesh->colors[0]) * 3);
 	}
 	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
 	{
-		stored_mesh->normals = alloc_push(memory, num_verts * sizeof(stored_mesh->normals[0]) * 3);
+		stored_mesh->normals = (vec3f*)alloc_push(
+            perm_section, num_verts * sizeof(stored_mesh->normals[0]) * 3);
 	}
 	if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
 	{
-		stored_mesh->texcoords = alloc_push(memory, num_verts * sizeof(stored_mesh->texcoords[0]) * 2);
+		stored_mesh->texcoords = (vec2f*)alloc_push(
+            perm_section, num_verts * sizeof(stored_mesh->texcoords[0]) * 2);
 	}
-	stored_mesh->indices = alloc_push(memory, num_faces * sizeof(stored_mesh->indices[0]) * 4);
+
+    uint64 indices_allocated = num_faces * 4;
+	stored_mesh->indices = (uint32*)alloc_push(
+        perm_section, indices_allocated * sizeof(uint32));
 
 	for (int i = 0; i<num_verts; i++)
 	{
 		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
 		{
-			stored_mesh->vertices[i].x = (float32)atof(nextWord(&c).start);
-			stored_mesh->vertices[i].y = (float32)atof(nextWord(&c).start);
-			stored_mesh->vertices[i].z = (float32)atof(nextWord(&c).start);
+			stored_mesh->vertices[i].x = (float32)atof(next_word(&c).start);
+			stored_mesh->vertices[i].y = (float32)atof(next_word(&c).start);
+			stored_mesh->vertices[i].z = (float32)atof(next_word(&c).start);
 		}
 		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
 		{
-			stored_mesh->texcoords[i].u = (float32)atof(nextWord(&c).start);
-			stored_mesh->texcoords[i].v = (float32)atof(nextWord(&c).start);
+			stored_mesh->texcoords[i].u = (float32)atof(next_word(&c).start);
+			stored_mesh->texcoords[i].v = (float32)atof(next_word(&c).start);
 		}
 		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
 		{
-			stored_mesh->normals[i].x = (float32)atof(nextWord(&c).start);
-			stored_mesh->normals[i].y = (float32)atof(nextWord(&c).start);
-			stored_mesh->normals[i].z = (float32)atof(nextWord(&c).start);
+			stored_mesh->normals[i].x = (float32)atof(next_word(&c).start);
+			stored_mesh->normals[i].y = (float32)atof(next_word(&c).start);
+			stored_mesh->normals[i].z = (float32)atof(next_word(&c).start);
 		}
 		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
 		{
-			stored_mesh->colors[i].r = (float32)(atof(nextWord(&c).start) / 255);
-			stored_mesh->colors[i].g = (float32)(atof(nextWord(&c).start) / 255);
-			stored_mesh->colors[i].b = (float32)(atof(nextWord(&c).start) / 255);
+			stored_mesh->colors[i].r = (float32)(atof(next_word(&c).start) / 255);
+			stored_mesh->colors[i].g = (float32)(atof(next_word(&c).start) / 255);
+			stored_mesh->colors[i].b = (float32)(atof(next_word(&c).start) / 255);
 		}
 	}
 
-	int i = 0;
+	uint64 num_indices = 0;
 	for (int f = 0; f<num_faces; f++)
 	{
-		auto points = atoi(nextWord(&c).start) - 3;
-		if (points < 0) continue; // can't do anything with a two-vertex face
-		uint32 first = atoi(nextWord(&c).start);
-		stored_mesh->indices[i++] = first;
-		stored_mesh->indices[i++] = atoi(nextWord(&c).start);
-		uint32 last = atoi(nextWord(&c).start);
-		stored_mesh->indices[i++] = last;
+		uint32 points = atoi(next_word(&c).start) - 3;
+		if (points < 0 || points > 1) continue; // only allow 3 or 4 vertex faces, for now(?)
+		uint32 first = atoi(next_word(&c).start);
+		stored_mesh->indices[num_indices++] = first;
+		stored_mesh->indices[num_indices++] = atoi(next_word(&c).start);
+		uint32 last = atoi(next_word(&c).start);
+		stored_mesh->indices[num_indices++] = last;
 		// begin triangle fan
 		for (int p = 0; p<points; p++)
 		{
-			stored_mesh->indices[i++] = first;
-			stored_mesh->indices[i++] = last;
-			last = atoi(nextWord(&c).start);
-			stored_mesh->indices[i++] = last;
+			stored_mesh->indices[num_indices++] = first;
+			stored_mesh->indices[num_indices++] = last;
+			last = atoi(next_word(&c).start);
+			stored_mesh->indices[num_indices++] = last;
 		}
 	}
-	stored_mesh->num_indices = i;
+
+    if (num_indices < indices_allocated)
+    {
+        uint64 extra_indices = indices_allocated - num_indices;
+        perm_section->used -= extra_indices * sizeof(uint32);
+    }
+
+	stored_mesh->num_indices = num_indices;
+
+    temp_section->used = temp_section_last;
 }
 
-struct OpenGLMesh loadOpenGLMesh(struct StoredMesh *stored_mesh)
+struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
 {
 	struct OpenGLMesh result = { 0 };
 	result.stored = stored_mesh;
@@ -502,7 +518,7 @@ void renderer_draw_face(struct Framebuffer *framebuffer, int num_vertices, vec2f
     }
 }
 
-LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
@@ -540,7 +556,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 	uint32 window_display_height = screen_height * window_scale;
 
 	WNDCLASS wc = { 0 };
-	wc.lpfnWndProc = windowProc;
+	wc.lpfnWndProc = window_proc;
 	wc.hInstance = hInstance;
 	wc.lpszClassName = "STST";
 	RegisterClass(&wc);
@@ -625,11 +641,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 	temp_section.used = 0;
 	temp_section.buffer = alloc_push(&memory, temp_section.size);
 
-    struct AppState *app_state = alloc_push(&perm_section, sizeof(struct AppState));
+    struct AppState *app_state = (struct AppState*)alloc_push(&perm_section, sizeof(struct AppState));
     app_state->renderer_sw = false;
 
 	struct StoredMesh cube_mesh = { 0 };
-	loadPly("assets/cube.ply", &cube_mesh, &perm_section);
+	load_ply("assets/cube.ply", &cube_mesh, &perm_section, &temp_section);
 
 	struct OpenGLMesh opengl_cube_mesh;
 
@@ -646,15 +662,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
 		uint32 vertex_shader;
 		vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-		struct ReadFileResult vertex_shader_src = readString("assets/default.vertex", &temp_section);
+		struct ReadFileResult vertex_shader_src = read_string("assets/default.vertex", &temp_section);
 		if (vertex_shader_src.status != READ_FILE_SUCCESS)
 		{
 			printf("Error loading vertex shader.\n");
 			exit(-1);
 		}
-		glShaderSource(vertex_shader, 1, &vertex_shader_src.buffer, NULL);
+		glShaderSource(vertex_shader, 1, (const GLchar* const*)&vertex_shader_src.buffer, NULL);
 		glCompileShader(vertex_shader);
-		int successful ;
+		int successful;
 		char info[512];
 		glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
 		if (!successful)
@@ -666,13 +682,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
 		uint32 fragment_shader;
 		fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-		struct ReadFileResult fragment_shader_src = readString("assets/default.fragment", &temp_section);
+		struct ReadFileResult fragment_shader_src = read_string("assets/default.fragment", &temp_section);
 		if (fragment_shader_src.status != READ_FILE_SUCCESS)
 		{
 			printf("Error loading fragment shader.\n");
 			exit(-1);
 		}
-		glShaderSource(fragment_shader, 1, &fragment_shader_src.buffer, NULL);
+		glShaderSource(fragment_shader, 1, (const GLchar* const*)&fragment_shader_src.buffer, NULL);
 		glCompileShader(fragment_shader);
 		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
 		if (!successful)
@@ -699,7 +715,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
 		opengl_shader.u_model_view_projection = glGetUniformLocation(opengl_shader.id, "model_view_projection");
 
-		opengl_cube_mesh = loadOpenGLMesh(&cube_mesh);
+		opengl_cube_mesh = load_opengl_mesh(&cube_mesh);
 	}
 
     struct Framebuffer framebuffer;
@@ -773,20 +789,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			glUseProgram(opengl_shader.id);
-			// mat4 transformation = perspective_projection_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8);
-			// mat4 transformation = identity_mat4();
 			mat4 transformation =
 				mult_mat4(
-					perspective_projection_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8),
+					persp_proj_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8),
 					mult_mat4(
 						translate_mat4(make_vec3f(0, 0, -4)),
 						rotate_mat4(make_vec3f(0, 1, 0), goose)));
-			goose += 0.05;
+			goose += 0.005;
 			if (goose > 2*M_PI)
 			{
 				goose -= 2*M_PI;
 			}
-			glUniformMatrix4fv(opengl_shader.u_model_view_projection, 1, GL_TRUE, &transformation);
+			glUniformMatrix4fv(opengl_shader.u_model_view_projection, 1, GL_TRUE, (const GLfloat*)&transformation);
 			glBindVertexArray(opengl_cube_mesh.vao);
 			glDrawElements(GL_TRIANGLES, opengl_cube_mesh.stored->num_indices, GL_UNSIGNED_INT, 0);
         }

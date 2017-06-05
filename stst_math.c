@@ -293,16 +293,9 @@ mat4 rotate_mat4(vec3f axis, float32 angle)
 	return result;
 }
 
-mat4 perspective_projection_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
+mat4 persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
 {
 	mat4 result = { 0 };
-	/*
-	result.m11 = 1 / (ar*tan(fov / 2));
-	result.m22 = 1 / tan(fov / 2);
-	result.m33 = (-nearz - farz) / (nearz - farz);
-	result.m34 = (2 * farz*nearz) / (nearz - farz);
-	result.m43 = 1;
-	*/
 	float32 f = 1 / tan(fov / 2);
 	result.m11 = f / ar;
 	result.m22 = f;
