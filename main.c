@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <windows.h>
 #include <glad/glad.h>
+#include <glad/glad_wgl.h>
 
 #ifdef _MSC_VER
 #define printf printf_msvc
@@ -34,6 +35,7 @@ struct Memory
 uint8 *alloc_push(struct Memory *memory, uint64 size)
 {
     uint8 *result = memory->buffer;
+    size = (size + 15) & ~0xF;
     memory->buffer += size;
     memory->used += size;
     assert(memory->used < memory->size);
@@ -182,6 +184,14 @@ struct StoredMesh
 	uint8  attrib_flags;
 };
 
+struct Material
+{
+    vec3f object_color; 
+    vec3f ambient_color;
+    float ambient_amount;
+    uint16 flags;
+};
+
 struct OpenGLMesh
 {
 	uint32 vertex_vbo;
@@ -196,7 +206,15 @@ struct OpenGLMesh
 struct OpenGLShader
 {
 	uint32 id;
-	int32 u_model_view_projection;
+	int32 u_model;
+    int32 u_normal_model;
+	int32 u_view;
+	int32 u_proj;
+	int32 u_object_color;
+	int32 u_ambient_color;
+	int32 u_ambient_amount;
+	int32 u_light_pos;
+	int32 u_light_color;
 };
 
 void load_ply(
@@ -223,7 +241,11 @@ void load_ply(
 		stored_mesh->num_vertices = num_verts;
 	}
 
+    uint8 attribs[8];
+    uint8 num_attribs = 0;
+    attribs[num_attribs++] = f_MeshAttribVertices;
 	stored_mesh->attrib_flags |= f_MeshAttribVertices;
+
 	while (!eq_substr_str(peek_word(c), "element"))
 	{
 		struct Substring w1 = next_word(&c);
@@ -233,18 +255,21 @@ void load_ply(
 		&&  eq_substr_str(w2, "float") 
 		&&  eq_substr_str(w3, "nx"))
 		{
+            attribs[num_attribs++] = f_MeshAttribNormals;
 			stored_mesh->attrib_flags |= f_MeshAttribNormals;
 		}
 		if (eq_substr_str(w1, "property") 
 		&&  eq_substr_str(w2, "float") 
 		&&  eq_substr_str(w3, "s"))
 		{
+            attribs[num_attribs++] = f_MeshAttribTexcoords;
 			stored_mesh->attrib_flags |= f_MeshAttribTexcoords;
 		}
 		if (eq_substr_str(w1, "property") 
 		&&  eq_substr_str(w2, "uchar") 
 		&&  eq_substr_str(w3, "red"))
 		{
+            attribs[num_attribs++] = f_MeshAttribColors;
 			stored_mesh->attrib_flags |= f_MeshAttribColors;
 		}
 	};
@@ -286,29 +311,32 @@ void load_ply(
 
 	for (int i = 0; i<num_verts; i++)
 	{
-		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
-		{
-			stored_mesh->vertices[i].x = (float32)atof(next_word(&c).start);
-			stored_mesh->vertices[i].y = (float32)atof(next_word(&c).start);
-			stored_mesh->vertices[i].z = (float32)atof(next_word(&c).start);
-		}
-		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
-		{
-			stored_mesh->texcoords[i].u = (float32)atof(next_word(&c).start);
-			stored_mesh->texcoords[i].v = (float32)atof(next_word(&c).start);
-		}
-		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
-		{
-			stored_mesh->normals[i].x = (float32)atof(next_word(&c).start);
-			stored_mesh->normals[i].y = (float32)atof(next_word(&c).start);
-			stored_mesh->normals[i].z = (float32)atof(next_word(&c).start);
-		}
-		if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
-		{
-			stored_mesh->colors[i].r = (float32)(atof(next_word(&c).start) / 255);
-			stored_mesh->colors[i].g = (float32)(atof(next_word(&c).start) / 255);
-			stored_mesh->colors[i].b = (float32)(atof(next_word(&c).start) / 255);
-		}
+        for (int a = 0; a < num_attribs; a++)
+        {
+            if (attribs[a] == f_MeshAttribVertices)
+            {
+                stored_mesh->vertices[i].x = (float32)atof(next_word(&c).start);
+                stored_mesh->vertices[i].y = (float32)atof(next_word(&c).start);
+                stored_mesh->vertices[i].z = (float32)atof(next_word(&c).start);
+            }
+            else if (attribs[a] == f_MeshAttribTexcoords)
+            {
+                stored_mesh->texcoords[i].u = (float32)atof(next_word(&c).start);
+                stored_mesh->texcoords[i].v = (float32)atof(next_word(&c).start);
+            }
+            else if (attribs[a] == f_MeshAttribNormals)
+            {
+                stored_mesh->normals[i].x = (float32)atof(next_word(&c).start);
+                stored_mesh->normals[i].y = (float32)atof(next_word(&c).start);
+                stored_mesh->normals[i].z = (float32)atof(next_word(&c).start);
+            }
+            else if (attribs[a] == f_MeshAttribColors)
+            {
+                stored_mesh->colors[i].r = (float32)(atof(next_word(&c).start) / 255);
+                stored_mesh->colors[i].g = (float32)(atof(next_word(&c).start) / 255);
+                stored_mesh->colors[i].b = (float32)(atof(next_word(&c).start) / 255);
+            }
+        }
 	}
 
 	uint64 num_indices = 0;
@@ -518,7 +546,12 @@ void renderer_draw_face(struct Framebuffer *framebuffer, int num_vertices, vec2f
     }
 }
 
-LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WIN_window_proc_false(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    return DefWindowProc(window, message, wParam, lParam);
+}
+
+LRESULT CALLBACK WIN_window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
@@ -547,85 +580,142 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lP
     return DefWindowProc(window, message, wParam, lParam);
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
+HWND WIN_create_window(WNDCLASS wc, uint32 display_width, uint32 display_height)
 {
-	uint32 screen_width = 384;
-	uint32 screen_height = 256;
-	uint8 window_scale = 3;
-	uint32 window_display_width = screen_width * window_scale;
-	uint32 window_display_height = screen_height * window_scale;
-
-	WNDCLASS wc = { 0 };
-	wc.lpfnWndProc = window_proc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = "STST";
-	RegisterClass(&wc);
-
 	DWORD window_style = WS_BORDER | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 	RECT window_rect;
 	window_rect.left = 0;
 	window_rect.top = 0;
-	window_rect.right = window_display_width;
-	window_rect.bottom = window_display_height;
+	window_rect.right = display_width;
+	window_rect.bottom = display_height;
 	AdjustWindowRectEx(&window_rect, window_style, 0, 0);
 
 	HWND window = CreateWindowEx(
 		0,
 		wc.lpszClassName,
-		"Window",
+		"stst",
 		window_style,
 		30, 30,
 		window_rect.right - window_rect.left,
 		window_rect.bottom - window_rect.top,
 		NULL,
 		NULL,
-		hInstance,
+		GetModuleHandle(NULL),
 		NULL);
+
 	if (!window)
 	{
 		DWORD error_code = GetLastError();
 		printf("Error creating the window. Error code is: %u.\n", error_code);
-		return -1;
+        exit(-1);
 	}
 
-	HDC device_context = GetDC(window);
-	PIXELFORMATDESCRIPTOR pixel_format = { 0 };
-	pixel_format.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-	pixel_format.nVersion = 1;
-	pixel_format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	pixel_format.iPixelType = PFD_TYPE_RGBA;
-	pixel_format.cColorBits = 32;
-	pixel_format.cAlphaBits = 8;
-	pixel_format.iLayerType = PFD_MAIN_PLANE;
-	int pixel_format_index = ChoosePixelFormat(device_context, &pixel_format);
-	DescribePixelFormat(device_context, pixel_format_index, sizeof(PIXELFORMATDESCRIPTOR), &pixel_format);
-	SetPixelFormat(device_context, pixel_format_index, &pixel_format);
+    return window;
+}
 
+HGLRC WIN_create_opengl_context(HDC device_context)
+{
 	HGLRC render_context = wglCreateContext(device_context);
 	if (!render_context)
 	{
 		DWORD error_code = GetLastError();
-		printf("Error creating OpenGL context. Error code is: %u.\n", error_code);
-		return -1;
+		printf("Error creating false OpenGL context. Error code is: %u.\n", error_code);
+        exit(-1);
 	}
 	if (!wglMakeCurrent(device_context, render_context))
 	{
 		DWORD error_code = GetLastError();
 		printf("OpenGL initialization error. Error code is: %u.\n", error_code);
-		return -1;
+        exit(-1);
 	}
+    return render_context;
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
+{
+	uint32 screen_width = 384;
+	uint32 screen_height = 256;
+	uint8 window_scale = 2;
+	uint32 window_display_width = screen_width * window_scale;
+	uint32 window_display_height = screen_height * window_scale;
+
+	WNDCLASS wc = { 0 };
+	wc.lpfnWndProc = WIN_window_proc;
+	wc.hInstance = hInstance;
+	wc.lpszClassName = "stst";
+	RegisterClass(&wc);
+
+	WNDCLASS wc_false = { 0 };
+	wc_false.lpfnWndProc = WIN_window_proc_false;
+	wc_false.hInstance = hInstance;
+	wc_false.lpszClassName = "stst-false";
+	RegisterClass(&wc_false);
+
+    HWND window = WIN_create_window(wc_false, window_display_width, window_display_height);
+	HDC device_context = GetDC(window);
+
+	PIXELFORMATDESCRIPTOR pixel_format = { 0 };
+	pixel_format.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+	pixel_format.nVersion = 1;
+	pixel_format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	pixel_format.iPixelType = PFD_TYPE_RGBA;
+	pixel_format.cAlphaBits = 8;
+	pixel_format.cDepthBits = 24;
+	pixel_format.cStencilBits = 8;
+	pixel_format.iLayerType = PFD_MAIN_PLANE;
+	int pixel_format_index = ChoosePixelFormat(device_context, &pixel_format);
+	DescribePixelFormat(device_context, pixel_format_index, sizeof(PIXELFORMATDESCRIPTOR), &pixel_format);
+	SetPixelFormat(device_context, pixel_format_index, &pixel_format);
+
+	HGLRC render_context = WIN_create_opengl_context(device_context);
+
 	if (!gladLoadGL())
 	{
 		printf("GLAD initialization error.\n");
-		return -1;
+        exit(-1);
 	}
+	if (!gladLoadWGL(device_context))
+	{
+		printf("GLAD initialization error.\n");
+        exit(-1);
+	}
+
+    const int pixel_format_attributes[] =
+    {
+        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+        WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+        WGL_COLOR_BITS_ARB, 32,
+        WGL_DEPTH_BITS_ARB, 24,
+        WGL_STENCIL_BITS_ARB, 8,
+        WGL_SAMPLE_BUFFERS_ARB, 1,
+        WGL_SAMPLES_ARB, 4,
+        0,
+    };
+
+    uint32 num_formats;
+    wglChoosePixelFormatARB(device_context, pixel_format_attributes, NULL, 1, &pixel_format_index, &num_formats);
+
+    wglMakeCurrent(device_context, NULL);
+    wglDeleteContext(render_context);
+    DestroyWindow(window);
+
+    window = WIN_create_window(wc, window_display_width, window_display_height);
+	device_context = GetDC(window);
+
+	DescribePixelFormat(device_context, pixel_format_index, sizeof(PIXELFORMATDESCRIPTOR), &pixel_format);
+	SetPixelFormat(device_context, pixel_format_index, &pixel_format);
+
+	render_context = WIN_create_opengl_context(device_context);
+
 	glEnable(GL_TEXTURE_2D);
-	glClampColor(GL_CLAMP_READ_COLOR, GL_TRUE);
 
 	struct Memory memory;
 	memory.size = 50 * megabyte;
 	memory.used = 0;
 	memory.buffer = VirtualAlloc(0, memory.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert((uintptr_t)memory.buffer % 16 == 0);
 	if (!memory.buffer)
 	{
 		DWORD error_code = GetLastError();
@@ -645,7 +735,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     app_state->renderer_sw = false;
 
 	struct StoredMesh cube_mesh = { 0 };
-	load_ply("assets/cube.ply", &cube_mesh, &perm_section, &temp_section);
+	load_ply("assets/sphere_q2.ply", &cube_mesh, &perm_section, &temp_section);
 	struct OpenGLMesh opengl_cube_mesh = load_opengl_mesh(&cube_mesh);
 
 	struct OpenGLShader opengl_shader;
@@ -669,7 +759,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     if (!successful)
     {
         glGetShaderInfoLog(vertex_shader, 512, NULL, info);
-        printf("Error compiling vertex shader.\n");
+        printf("Error compiling vertex shader:\n%s\n", info);
         exit(-1);
     }
 
@@ -706,8 +796,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
 
-    opengl_shader.u_model_view_projection = glGetUniformLocation(opengl_shader.id, "model_view_projection");
-
+    opengl_shader.u_model = glGetUniformLocation(opengl_shader.id, "u_model");
+    opengl_shader.u_normal_model = glGetUniformLocation(opengl_shader.id, "u_normal_model");
+    opengl_shader.u_view = glGetUniformLocation(opengl_shader.id, "u_view");
+    opengl_shader.u_proj = glGetUniformLocation(opengl_shader.id, "u_proj");
+    opengl_shader.u_object_color = glGetUniformLocation(opengl_shader.id, "u_object_color");
+    opengl_shader.u_ambient_color = glGetUniformLocation(opengl_shader.id, "u_ambient_color");
+    opengl_shader.u_ambient_amount = glGetUniformLocation(opengl_shader.id, "u_ambient_amount");
+    opengl_shader.u_light_pos = glGetUniformLocation(opengl_shader.id, "u_light_pos");
+    opengl_shader.u_light_color = glGetUniformLocation(opengl_shader.id, "u_light_color");
 
     struct Framebuffer framebuffer;
     framebuffer.width = screen_width;
@@ -776,23 +873,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         }
         else
         {
-            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			glUseProgram(opengl_shader.id);
-			mat4 transformation =
-				mult_mat4(
-					persp_proj_mat4(0.7, (float32)screen_width/screen_height, 0.1, 8),
-					mult_mat4(
-						translate_mat4(make_vec3f(0, 0, -4)),
-						rotate_mat4(make_vec3f(0, 1, 0), goose)));
+			mat4 model = mult_mat4(
+                make_translate_mat4(make_vec3f(2*cos(goose), 0, -5 + 2*sin(goose))),
+                make_rotate_mat4(make_vec3f(0, 1, 0), goose));
+            mat3 normal_model = transpose_mat3(inverse_mat3(make_mat3_from_mat4(model)));
+            mat4 view = make_identity_mat4();
+            mat4 proj = make_persp_proj_mat4(0.7, (float32)screen_width/screen_height, 0.1, 50);
 			goose += 0.005;
 			if (goose > 2*M_PI)
 			{
 				goose -= 2*M_PI;
 			}
-			glUniformMatrix4fv(opengl_shader.u_model_view_projection, 1, GL_TRUE, (const GLfloat*)&transformation);
+
+            vec3f object_color = make_vec3f(1.0, 1.0, 1.0);
+            vec3f ambient_color = make_vec3f(1, 0, 0);
+            float32 ambient_amount = 0.3;
+            vec3f light_pos = make_vec3f(0, 0, -5);
+            vec3f light_color = make_vec3f(0, 1, 0);
+            
+			glUseProgram(opengl_shader.id);
+
+			glUniformMatrix4fv(opengl_shader.u_model,1, GL_TRUE, (const GLfloat*)&model);
+			glUniformMatrix3fv(opengl_shader.u_normal_model, 1, GL_TRUE, (const GLfloat*)&normal_model);
+			glUniformMatrix4fv(opengl_shader.u_view, 1, GL_TRUE, (const GLfloat*)&view);
+			glUniformMatrix4fv(opengl_shader.u_proj, 1, GL_TRUE, (const GLfloat*)&proj);
+			glUniform3fv(opengl_shader.u_object_color, 1, (const GLfloat*)&object_color);
+			glUniform3fv(opengl_shader.u_ambient_color, 1, (const GLfloat*)&ambient_color);
+			glUniform1f(opengl_shader.u_ambient_amount, ambient_amount);
+			glUniform3fv(opengl_shader.u_light_pos, 1, (const GLfloat*)&light_pos);
+			glUniform3fv(opengl_shader.u_light_color, 1, (const GLfloat*)&light_color);
+
 			glBindVertexArray(opengl_cube_mesh.vao);
+            
 			glDrawElements(GL_TRIANGLES, opengl_cube_mesh.stored->num_indices, GL_UNSIGNED_INT, 0);
         }
 

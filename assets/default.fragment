@@ -1,11 +1,44 @@
 #version 330
 
+#define d_HasAmbient
+#define d_HasDiffuse
+
+
+in vec3 vert_world_pos;
 in vec4 vert_color;
+in vec3 vert_normal;
+
+
+#ifdef d_HasAmbient
+uniform vec3 u_ambient_color;
+uniform float u_ambient_amount;
+#endif
+
+#ifdef d_HasDiffuse
+uniform vec3 u_light_pos;
+uniform vec3 u_light_color;
+#endif
+
 
 out vec4 frag_color;
 
+
 void main()
 {
-    // frag_color = vec4(1.0f, 0.5f, 0.2f, 1.0f);
-    frag_color = vert_color;
+#ifdef d_HasAmbient
+    vec3 ambient = u_ambient_amount * u_ambient_color;
+#else
+    vec3 ambient = vec3(0, 0, 0);
+#endif
+
+#ifdef d_HasDiffuse
+    vec3 normal = normalize(vert_normal);
+    vec3 light_dir = normalize(u_light_pos - vert_world_pos);
+    vec3 diffuse = max(dot(normal, light_dir), 0.0) * u_light_color;
+#else
+    vec3 diffuse = vec3(0, 0, 0);
+#endif
+
+    frag_color = vec4((ambient + diffuse) * vert_color, 1.0);
 }
+

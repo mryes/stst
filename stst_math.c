@@ -199,6 +199,107 @@ typedef vec4_uint8 vec4u;
 
 typedef union 
 {
+	float32 m[3][3];
+	struct 
+	{
+		float32 
+			m11, m12, m13,
+			m21, m22, m23,
+			m31, m32, m33; 
+	};
+} mat3;
+
+mat3 mult_mat3(mat3 a, mat3 b)
+{
+	mat3 result;
+	for (int i = 0; i < 3; i++)
+	{
+		for (int j = 0; j < 3; j++)
+		{
+			result.m[i][j] = 
+				a.m[i][0]*b.m[0][j]
+			  + a.m[i][1]*b.m[1][j]
+			  + a.m[i][2]*b.m[2][j];
+		}
+	}
+	return result;
+}
+
+mat3 mult_mat3_float32(mat3 a, float32 b)
+{
+    mat3 result;
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            result.m[i][j] = a.m[i][j] * b;
+        }
+    }
+    return result;
+}
+
+mat3 transpose_mat3(mat3 m)
+{
+    mat3 result;
+	for (int i = 0; i < 3; i++)
+	{
+		for (int j = 0; j < 3; j++)
+		{
+			result.m[i][j] = m.m[j][i];
+        }
+    }
+    return result;
+}
+
+float32 determinant_mat3(mat3 m)
+{
+    float32 result = 
+        m.m11 * (m.m22*m.m33 - m.m23*m.m32)
+      - m.m12 * (m.m21*m.m33 - m.m23*m.m31)
+      + m.m13 * (m.m21*m.m32 - m.m22*m.m31);
+    return result;
+}
+
+mat3 inverse_mat3(mat3 m)
+{
+    mat3 result;
+    result.m11 = m.m22*m.m33 - m.m23*m.m32;
+    result.m12 = m.m13*m.m32 - m.m12*m.m33;
+    result.m13 = m.m12*m.m23 - m.m13*m.m22;
+    result.m21 = m.m23*m.m31 - m.m21*m.m33;
+    result.m22 = m.m11*m.m33 - m.m13*m.m31;
+    result.m23 = m.m13*m.m21 - m.m11*m.m23;
+    result.m31 = m.m21*m.m32 - m.m22*m.m31;
+    result.m32 = m.m12*m.m31 - m.m11*m.m32;
+    result.m33 = m.m11*m.m22 - m.m12*m.m21;
+    result = mult_mat3_float32(result, 1 / determinant_mat3(m));
+    return result;
+}
+
+mat3 make_identity_mat3()
+{
+	mat3 result =
+	{
+		1, 0, 0,
+		0, 1, 0,
+		0, 0, 1,
+	};
+	return result;
+}
+
+mat3 make_scale_mat3(vec3f s)
+{
+	mat3 result = 
+	{
+		s.x,   0,   0,
+		  0, s.y,   0,
+		  0,   0, s.z,
+	};
+	return result;
+}
+
+typedef union 
+{
 	float32 m[4][4];
 	struct 
 	{
@@ -227,7 +328,7 @@ mat4 mult_mat4(mat4 a, mat4 b)
 	return result;
 }
 
-mat4 identity_mat4()
+mat4 make_identity_mat4()
 {
 	mat4 result =
 	{
@@ -239,7 +340,7 @@ mat4 identity_mat4()
 	return result;
 }
 
-mat4 translate_mat4(vec3f t)
+mat4 make_translate_mat4(vec3f t)
 {
 	mat4 result =
 	{
@@ -251,7 +352,7 @@ mat4 translate_mat4(vec3f t)
 	return result;
 }
 
-mat4 scale_mat4(vec3f s)
+mat4 make_scale_mat4(vec3f s)
 {
 	mat4 result = 
 	{
@@ -263,7 +364,7 @@ mat4 scale_mat4(vec3f s)
 	return result;
 }
 
-mat4 rotate_mat4(vec3f axis, float32 angle)
+mat4 make_rotate_mat4(vec3f axis, float32 angle)
 {
 	float32 cos_angle = cos(angle);
 	float32 sin_angle = sin(angle);
@@ -293,7 +394,7 @@ mat4 rotate_mat4(vec3f axis, float32 angle)
 	return result;
 }
 
-mat4 persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
+mat4 make_persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
 {
 	mat4 result = { 0 };
 	float32 f = 1 / tan(fov / 2);
@@ -304,3 +405,15 @@ mat4 persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
 	result.m43 = -1;
 	return result;
 }
+
+mat3 make_mat3_from_mat4(mat4 m)
+{
+    mat3 result = 
+    {
+        m.m11, m.m12, m.m13,
+        m.m21, m.m22, m.m23,
+        m.m31, m.m32, m.m33
+    };
+    return result;
+}
+

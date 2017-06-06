@@ -1,15 +1,36 @@
 #version 330
+
+
 layout (location = 0) in vec3 in_pos;
 layout (location = 1) in vec3 in_color;
 layout (location = 2) in vec3 in_normal;
 layout (location = 3) in vec3 in_texcoord;
 
-uniform mat4 model_view_projection;
 
+uniform mat4 u_model;
+uniform mat3 u_normal_model;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+
+#ifndef d_HasVertexColors
+uniform vec3 u_object_color;
+#endif
+
+
+out vec3 vert_world_pos;
 out vec4 vert_color;
+out vec3 vert_normal;
+
 
 void main()
 {
-    gl_Position = model_view_projection * vec4(in_pos.x, in_pos.y, in_pos.z, 1.0);
-    vert_color = vec4(in_color, 1.0);
+    vert_world_pos = vec3(u_model * vec4(in_pos, 1.0));
+    vert_normal = u_normal_model * in_normal;
+#ifdef d_HasVertexColors
+    vert_color  = vec4(in_color, 1.0);
+#else
+    vert_color  = vec4(u_object_color, 1.0);
+#endif
+    gl_Position = u_proj * u_view * vec4(vert_world_pos, 1.0);
 }
+
