@@ -199,30 +199,30 @@ typedef vec4_uint8 vec4u;
 
 typedef union 
 {
-	float32 m[3][3];
-	struct 
-	{
-		float32 
-			m11, m12, m13,
-			m21, m22, m23,
-			m31, m32, m33; 
-	};
+    float32 m[3][3];
+    struct 
+    {
+        float32 
+            m11, m12, m13,
+            m21, m22, m23,
+            m31, m32, m33; 
+    };
 } mat3;
 
 mat3 mult_mat3(mat3 a, mat3 b)
 {
-	mat3 result;
-	for (int i = 0; i < 3; i++)
-	{
-		for (int j = 0; j < 3; j++)
-		{
-			result.m[i][j] = 
-				a.m[i][0]*b.m[0][j]
-			  + a.m[i][1]*b.m[1][j]
-			  + a.m[i][2]*b.m[2][j];
-		}
-	}
-	return result;
+    mat3 result;
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            result.m[i][j] = 
+                a.m[i][0]*b.m[0][j]
+              + a.m[i][1]*b.m[1][j]
+              + a.m[i][2]*b.m[2][j];
+        }
+    }
+    return result;
 }
 
 mat3 mult_mat3_float32(mat3 a, float32 b)
@@ -241,11 +241,11 @@ mat3 mult_mat3_float32(mat3 a, float32 b)
 mat3 transpose_mat3(mat3 m)
 {
     mat3 result;
-	for (int i = 0; i < 3; i++)
-	{
-		for (int j = 0; j < 3; j++)
-		{
-			result.m[i][j] = m.m[j][i];
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            result.m[i][j] = m.m[j][i];
         }
     }
     return result;
@@ -278,132 +278,132 @@ mat3 inverse_mat3(mat3 m)
 
 mat3 make_identity_mat3()
 {
-	mat3 result =
-	{
-		1, 0, 0,
-		0, 1, 0,
-		0, 0, 1,
-	};
-	return result;
+    mat3 result =
+    {
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+    };
+    return result;
 }
 
 mat3 make_scale_mat3(vec3f s)
 {
-	mat3 result = 
-	{
-		s.x,   0,   0,
-		  0, s.y,   0,
-		  0,   0, s.z,
-	};
-	return result;
+    mat3 result = 
+    {
+        s.x,   0,   0,
+          0, s.y,   0,
+          0,   0, s.z,
+    };
+    return result;
 }
 
 typedef union 
 {
-	float32 m[4][4];
-	struct 
-	{
-		float32 
-			m11, m12, m13, m14,
-			m21, m22, m23, m24,
-			m31, m32, m33, m34,
-			m41, m42, m43, m44;
-	};
+    float32 m[4][4];
+    struct 
+    {
+        float32 
+            m11, m12, m13, m14,
+            m21, m22, m23, m24,
+            m31, m32, m33, m34,
+            m41, m42, m43, m44;
+    };
 } mat4;
 
 mat4 mult_mat4(mat4 a, mat4 b)
 {
-	mat4 result;
-	for (int i = 0; i < 4; i++)
-	{
-		for (int j = 0; j < 4; j++)
-		{
-			result.m[i][j] = 
-				a.m[i][0]*b.m[0][j]
-			  + a.m[i][1]*b.m[1][j]
-			  + a.m[i][2]*b.m[2][j]
-			  + a.m[i][3]*b.m[3][j];
-		}
-	}
-	return result;
+    mat4 result;
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            result.m[i][j] = 
+                a.m[i][0]*b.m[0][j]
+              + a.m[i][1]*b.m[1][j]
+              + a.m[i][2]*b.m[2][j]
+              + a.m[i][3]*b.m[3][j];
+        }
+    }
+    return result;
 }
 
 mat4 make_identity_mat4()
 {
-	mat4 result =
-	{
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1
-	};
-	return result;
+    mat4 result =
+    {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    };
+    return result;
 }
 
 mat4 make_translate_mat4(vec3f t)
 {
-	mat4 result =
-	{
-		1, 0, 0, t.x,
-		0, 1, 0, t.y,
-		0, 0, 1, t.z,
-		0, 0, 0, 1
-	};
-	return result;
+    mat4 result =
+    {
+        1, 0, 0, t.x,
+        0, 1, 0, t.y,
+        0, 0, 1, t.z,
+        0, 0, 0, 1
+    };
+    return result;
 }
 
 mat4 make_scale_mat4(vec3f s)
 {
-	mat4 result = 
-	{
-		s.x,   0,   0,  0,
-		  0, s.y,   0,  0,
-		  0,   0, s.z,  0,
-		  0,   0,   0,  1
-	};
-	return result;
+    mat4 result = 
+    {
+        s.x,   0,   0,  0,
+          0, s.y,   0,  0,
+          0,   0, s.z,  0,
+          0,   0,   0,  1
+    };
+    return result;
 }
 
 mat4 make_rotate_mat4(vec3f axis, float32 angle)
 {
-	float32 cos_angle = cos(angle);
-	float32 sin_angle = sin(angle);
+    float32 cos_angle = cos(angle);
+    float32 sin_angle = sin(angle);
 
-	mat4 result;
+    mat4 result;
 
-	result.m11 = cos_angle + (1 - cos_angle)*axis.x*axis.x;
-	result.m12 = (1 - cos_angle)*axis.x*axis.y - axis.z*sin_angle;
-	result.m13 = (1 - cos_angle)*axis.x*axis.z + axis.y*sin_angle;
-	result.m14 = 0;
+    result.m11 = cos_angle + (1 - cos_angle)*axis.x*axis.x;
+    result.m12 = (1 - cos_angle)*axis.x*axis.y - axis.z*sin_angle;
+    result.m13 = (1 - cos_angle)*axis.x*axis.z + axis.y*sin_angle;
+    result.m14 = 0;
 
-	result.m21 = (1 - cos_angle)*axis.x*axis.y + axis.z*sin_angle;
-	result.m22 = cos_angle + (1 - cos_angle)*axis.y*axis.y;
-	result.m23 = (1 - cos_angle)*axis.y*axis.z - axis.z*sin_angle;
-	result.m24 = 0;
+    result.m21 = (1 - cos_angle)*axis.x*axis.y + axis.z*sin_angle;
+    result.m22 = cos_angle + (1 - cos_angle)*axis.y*axis.y;
+    result.m23 = (1 - cos_angle)*axis.y*axis.z - axis.z*sin_angle;
+    result.m24 = 0;
 
-	result.m31 = (1 - cos_angle)*axis.x*axis.z - axis.y*sin_angle;
-	result.m32 = (1 - cos_angle)*axis.y*axis.z + axis.x*sin_angle;
-	result.m33 = cos_angle + (1 - cos_angle)*axis.z*axis.z;
-	result.m34 = 0;
+    result.m31 = (1 - cos_angle)*axis.x*axis.z - axis.y*sin_angle;
+    result.m32 = (1 - cos_angle)*axis.y*axis.z + axis.x*sin_angle;
+    result.m33 = cos_angle + (1 - cos_angle)*axis.z*axis.z;
+    result.m34 = 0;
 
-	result.m41 = 0;
-	result.m42 = 0;
-	result.m43 = 0;
-	result.m44 = 1;
+    result.m41 = 0;
+    result.m42 = 0;
+    result.m43 = 0;
+    result.m44 = 1;
 
-	return result;
+    return result;
 }
 
 mat4 make_persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
 {
-	mat4 result = { 0 };
-	float32 f = 1 / tan(fov / 2);
-	result.m11 = f / ar;
-	result.m22 = f;
-	result.m33 = (farz + nearz) / (nearz - farz);
-	result.m34 = (2 * farz*nearz) / (nearz - farz);
-	result.m43 = -1;
-	return result;
+    mat4 result = { 0 };
+    float32 f = 1 / tan(fov / 2);
+    result.m11 = f / ar;
+    result.m22 = f;
+    result.m33 = (farz + nearz) / (nearz - farz);
+    result.m34 = (2 * farz*nearz) / (nearz - farz);
+    result.m43 = -1;
+    return result;
 }
 
 mat3 make_mat3_from_mat4(mat4 m)
