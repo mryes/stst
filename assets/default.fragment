@@ -39,6 +39,6 @@ void main()
     vec3 diffuse = vec3(0, 0, 0);
 #endif
 
-    frag_color = vec4((ambient + diffuse) * vert_color, 1.0);
+    frag_color = vec4((ambient + diffuse) * vert_color.xyz, 1.0);
 }
 

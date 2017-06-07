@@ -51,7 +51,7 @@ struct ReadFileResult
         READ_FILE_BUFFER_TOO_SMALL
     } status;
     char *buffer;
-    int64 error;
+    int32 error;
     size_t size;
 };
 struct ReadFileResult read_file(const char *file_name, struct Memory *memory)
@@ -176,11 +176,11 @@ struct StoredMesh
     vec3f  *normals;
     vec2f  *texcoords;
     uint32 *indices;
-    uint32 num_vertices;
-    uint32 num_colors;
-    uint32 num_normals;
-    uint32 num_texcoords;
-    uint32 num_indices;
+    uint64 num_vertices;
+    uint64 num_colors;
+    uint64 num_normals;
+    uint64 num_texcoords;
+    uint64 num_indices;
     uint8  attrib_flags;
 };
 
@@ -350,7 +350,7 @@ void load_ply(
         uint32 last = atoi(next_word(&c).start);
         stored_mesh->indices[num_indices++] = last;
         // begin triangle fan
-        for (int p = 0; p<points; p++)
+        for (uint32 p = 0; p<points; p++)
         {
             stored_mesh->indices[num_indices++] = first;
             stored_mesh->indices[num_indices++] = last;
@@ -635,7 +635,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 {
     uint32 screen_width = 384;
     uint32 screen_height = 256;
-    uint8 window_scale = 2;
+    uint8 window_scale = 3;
     uint32 window_display_width = screen_width * window_scale;
     uint32 window_display_height = screen_height * window_scale;
 
@@ -777,7 +777,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     if (!successful)
     {
         glGetShaderInfoLog(fragment_shader, 512, NULL, info);
-        printf("Error compiling fragment shader.\n");
+        printf("Error compiling fragment shader:\n%s\n", info);
         exit(-1);
     }
 
@@ -824,13 +824,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
     temp_section.used = 0;
 
+	float64 dt = 0;
+
     float32 goose = 0;
 
     int running = true;
     while (running)
     {
-        LARGE_INTEGER perf_counter_start;
-        QueryPerformanceCounter(&perf_counter_start);
+        LARGE_INTEGER counter_start;
+        QueryPerformanceCounter(&counter_start);
 
         MSG msg = {0};
         while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
@@ -882,7 +884,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
             mat3 normal_model = transpose_mat3(inverse_mat3(make_mat3_from_mat4(model)));
             mat4 view = make_identity_mat4();
             mat4 proj = make_persp_proj_mat4(0.7, (float32)screen_width/screen_height, 0.1, 50);
-            goose += 0.005;
+            goose += 1 * dt;
             if (goose > 2*M_PI)
             {
                 goose -= 2*M_PI;
@@ -913,15 +915,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
         SwapBuffers(device_context);
 
-        /*
-        LARGE_INTEGER perf_counter_end;
-        QueryPerformanceCounter(&perf_counter_end);
+        LARGE_INTEGER counter_end;
+        QueryPerformanceCounter(&counter_end);
         LARGE_INTEGER ticks_elapsed;
-        ticks_elapsed.QuadPart = perf_counter_end.QuadPart - perf_counter_start.QuadPart;
-        double seconds_elapsed = (double)ticks_elapsed.QuadPart / (double)perf_freq.QuadPart;
+        ticks_elapsed.QuadPart = counter_end.QuadPart - counter_start.QuadPart;
+        dt = (double)ticks_elapsed.QuadPart / (double)perf_freq.QuadPart;
+		/*
         printf("Seconds elapsed: %f, Ticks elapsed: %I64d, Ticks per second: %I64d\n",
-            seconds_elapsed, ticks_elapsed, perf_freq.QuadPart);
-        */
+            dt, ticks_elapsed, perf_freq.QuadPart);
+		*/
     }
 
     return 0;

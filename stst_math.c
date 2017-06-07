@@ -366,8 +366,8 @@ mat4 make_scale_mat4(vec3f s)
 
 mat4 make_rotate_mat4(vec3f axis, float32 angle)
 {
-    float32 cos_angle = cos(angle);
-    float32 sin_angle = sin(angle);
+    float32 cos_angle = (float32)cos(angle);
+    float32 sin_angle = (float32)sin(angle);
 
     mat4 result;
 
@@ -397,7 +397,7 @@ mat4 make_rotate_mat4(vec3f axis, float32 angle)
 mat4 make_persp_proj_mat4(float32 fov, float32 ar, float32 nearz, float32 farz)
 {
     mat4 result = { 0 };
-    float32 f = 1 / tan(fov / 2);
+    float32 f = 1 / (float32)tan(fov / 2);
     result.m11 = f / ar;
     result.m22 = f;
     result.m33 = (farz + nearz) / (nearz - farz);
