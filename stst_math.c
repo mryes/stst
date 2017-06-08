@@ -116,6 +116,11 @@ vec4_##type sub_vec4_##type(vec4_##type v1, vec4_##type v2) \
     vec4_##type result = { v1.x - v2.x, v1.y - v2.y, v1.z - v2.z, v1.w - v2.w }; \
     return result; \
 } \
+vec4_##type scale_vec4_##type(vec4_##type v, type s) \
+{ \
+    vec4_##type result = { v.x * s, v.y * s, v.z * s, v.w * s }; \
+    return result; \
+} \
 type dot_vec4_##type(vec4_##type v1, vec4_##type v2) \
 { \
     type result = v1.x * v2.x + v1.y * v2.y + v1.z + v2.z + v1.w * v2.w; \
@@ -135,6 +140,11 @@ vec3_##type add_vec3_##type(vec3_##type v1, vec3_##type v2) \
 vec3_##type sub_vec3_##type(vec3_##type v1, vec3_##type v2) \
 { \
     vec3_##type result = { v1.x - v2.x, v1.y - v2.y, v1.z - v2.z }; \
+    return result; \
+} \
+vec3_##type scale_vec3_##type(vec3_##type v, type s) \
+{ \
+    vec3_##type result = { v.x * s, v.y * s, v.z * s }; \
     return result; \
 } \
 type dot_vec3_##type(vec3_##type v1, vec3_##type v2) \
@@ -158,6 +168,11 @@ vec2_##type sub_vec2_##type(vec2_##type v1, vec2_##type v2) \
     vec2_##type result = { v1.x - v2.x, v1.y - v2.y }; \
     return result; \
 } \
+vec2_##type scale_vec2_##type(vec2_##type v, type s) \
+{ \
+    vec2_##type result = { v.x * s, v.y * s }; \
+    return result; \
+} \
 type dot_vec2_##type(vec2_##type v1, vec2_##type v2) \
 { \
     type result = v1.x * v2.x + v1.y * v2.y; \
@@ -171,30 +186,35 @@ typedef vec2_float32 vec2f;
 #define make_vec2f make_vec2_float32
 #define add_vec2f add_vec2_float32
 #define sub_vec2f sub_vec2_float32
+#define scale_vec2f scale_vec2_float32
 #define dot_vec2f dot_vec2_float32
 
 typedef vec3_float32 vec3f;
 #define make_vec3f make_vec3_float32
 #define add_vec3f add_vec3_float32
 #define sub_vec3f sub_vec3_float32
+#define scale_vec3f scale_vec3_float32
 #define dot_vec3f dot_vec3_float32
 
 typedef vec4_float32 vec4f;
 #define make_vec4f make_vec4_float32
 #define add_vec4f add_vec4_float32
 #define sub_vec4f sub_vec4_float32
+#define scale_vec4f scale_vec4_float32
 #define dot_vec4f dot_vec4_float32
 
 typedef vec3_uint8 vec3u;
 #define make_vec3u make_vec3_uint8
 #define add_vec3u add_vec3_uint8
 #define sub_vec3u sub_vec3_uint8
+#define scale_vec3u scale_vec3_uint8
 #define dot_vec3u dot_vec3_uint8
 
 typedef vec4_uint8 vec4u;
 #define make_vec4u make_vec4_uint8
 #define add_vec4u add_vec4_uint8
 #define sub_vec4u sub_vec4_uint8
+#define scale_vec4u scale_vec4_uint8
 #define dot_vec4u dot_vec4_uint8
 
 typedef union 

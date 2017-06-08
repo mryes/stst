@@ -21,7 +21,7 @@ int printf_msvc(const char *format, ...)
 #endif
 
 #define array_length(array) (sizeof(array) / sizeof((array)[0]))
-#define hasFlag(flags, flag) (((flags) & (flag)) != 0)
+#define has_flag(flags, flag) (((flags) & (flag)) != 0)
 
 #include "stst_math.c"
 
@@ -284,22 +284,22 @@ void load_ply(
 
     while (!eq_substr_str(next_word(&c), "end_header")) {};
 
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribVertices))
     {
         stored_mesh->vertices = (vec3f*)alloc_push(
             perm_section, num_verts * sizeof(stored_mesh->vertices[0]) * 3);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribColors))
     {
         stored_mesh->colors = (vec3f*)alloc_push(
             perm_section, num_verts * sizeof(stored_mesh->colors[0]) * 3);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribNormals))
     {
         stored_mesh->normals = (vec3f*)alloc_push(
             perm_section, num_verts * sizeof(stored_mesh->normals[0]) * 3);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
     {
         stored_mesh->texcoords = (vec2f*)alloc_push(
             perm_section, num_verts * sizeof(stored_mesh->texcoords[0]) * 2);
@@ -376,7 +376,7 @@ struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
     result.stored = stored_mesh;
     glGenVertexArrays(1, &result.vao);
     glBindVertexArray(result.vao);
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribVertices))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribVertices))
     {
         glGenBuffers(1, &result.vertex_vbo);
         glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
@@ -388,7 +388,7 @@ struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
         glVertexAttribPointer(c_AttribLocationVertices, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
         glEnableVertexAttribArray(c_AttribLocationVertices);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribColors))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribColors))
     {
         glGenBuffers(1, &result.color_vbo);
         glBindBuffer(GL_ARRAY_BUFFER, result.color_vbo);
@@ -400,7 +400,7 @@ struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
         glVertexAttribPointer(c_AttribLocationColors, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
         glEnableVertexAttribArray(c_AttribLocationColors);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribNormals))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribNormals))
     {
         glGenBuffers(1, &result.normal_vbo);
         glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo);
@@ -412,7 +412,7 @@ struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
         glVertexAttribPointer(c_AttribLocationNormals, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float32), (void*)0);
         glEnableVertexAttribArray(c_AttribLocationNormals);
     }
-    if (hasFlag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
+    if (has_flag(stored_mesh->attrib_flags, f_MeshAttribTexcoords))
     {
         glGenBuffers(1, &result.texcoord_vbo);
         glBindBuffer(GL_ARRAY_BUFFER, result.texcoord_vbo);
@@ -434,10 +434,8 @@ struct OpenGLMesh load_opengl_mesh(struct StoredMesh *stored_mesh)
     return result;
 }
 
-#define Mpixel_word(r, g, b) ((r & 15) << 12) | ((g & 15) << 8) | ((b & 15) << 4);
 
-#define min_face_vertices 3
-#define max_face_vertices 8
+#define pixel_dword(r, g, b) (((r & 255) << 24) | ((g & 255) << 16) | ((b & 255) << 8) | 255)
 
 struct Framebuffer
 {
@@ -449,102 +447,6 @@ struct Framebuffer
     uint32 pixel_num;
 };
 
-void renderer_draw_face(struct Framebuffer *framebuffer, int num_vertices, vec2f *vertices, vec3u *colors)
-{
-    assert(num_vertices >= min_face_vertices);
-    assert(num_vertices <= max_face_vertices);
-
-    vec2f min_corner = { INFINITY, INFINITY };
-    vec2f max_corner = { -INFINITY, -INFINITY };
-    for (int i=0; i<num_vertices; i++)
-    {
-        vec2f p = vertices[i];
-        if (p.x < min_corner.x)
-        {
-            min_corner.x = p.x;
-        }
-        if (p.y < min_corner.y)
-        {
-            min_corner.y = p.y;
-        }
-        if (p.x > max_corner.x)
-        {
-            max_corner.x = p.x;
-        }
-        if (p.y > max_corner.y)
-        {
-            max_corner.y = p.y;
-        }
-    }
-
-    min_corner.x = (float32)floor(min_corner.x);
-    min_corner.y = (float32)floor(min_corner.y);
-    max_corner.x = (float32)ceil(max_corner.x);
-    max_corner.y = (float32)ceil(max_corner.y);
-
-    if (min_corner.x < 0)
-    {
-        min_corner.x = 0;
-    }
-    if (min_corner.x >= framebuffer->width)
-    {
-        min_corner.x = (float32)(framebuffer->width - 1);
-    }
-    if (min_corner.y < 0)
-    {
-        min_corner.y = 0;
-    }
-    if (min_corner.y >= framebuffer->height)
-    {
-        min_corner.y = (float32)(framebuffer->height - 1);
-    }
-
-    vec2f perps[min_face_vertices];
-    vec2f lines[min_face_vertices];
-    int vertex_indices[3] = { 0, 1, 2 };
-    for (int vi=2; vi<num_vertices; vi++)
-    {
-        for (int i=0; i<min_face_vertices; i++)
-        {
-            int next = i + 1;
-            if (next > 2) next = 0;
-            lines[i] = sub_vec2_float32(vertices[vertex_indices[next]], vertices[vertex_indices[i]]);
-            perps[i].x = -lines[i].y;
-            perps[i].y =  lines[i].x;
-        }
-
-        for (int y = (int)min_corner.y; y <= (int)max_corner.y; y++)
-        {
-            for (int x = (int)min_corner.x; x <= (int)max_corner.x; x++)
-            {
-                vec2f pixel_vec_abs = make_vec2_float32(x + 0.5f, y + 0.5f);
-                int16 last_dp_sign;
-                int fail = false;
-                for (int i=0; i<min_face_vertices; i++)
-                {
-                    vec2f pixel_vec_rel = 
-                        sub_vec2_float32(pixel_vec_abs, vertices[vertex_indices[i]]);
-                    float32 dp = dot_vec2_float32(pixel_vec_rel, perps[i]);
-                    int16 dp_sign = sign_float32(dp);
-                    if (i > 0 && dp_sign != last_dp_sign)
-                    {
-                        fail = true;
-                        break;
-                    }
-                    last_dp_sign = dp_sign;
-                }
-                if (fail) continue;
-
-                vec3_uint8 color = colors[0];
-                uint16 *pixel = (uint16*)framebuffer->data + (y * framebuffer->width + x);
-                *pixel = Mpixel_word(color.r, color.g, color.b);
-            }
-        }
-
-        vertex_indices[1]++;
-        vertex_indices[2]++;
-    }
-}
 
 LRESULT CALLBACK WIN_window_proc_false(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -639,6 +541,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     uint32 window_display_width = screen_width * window_scale;
     uint32 window_display_height = screen_height * window_scale;
 
+
     WNDCLASS wc = { 0 };
     wc.lpfnWndProc = WIN_window_proc;
     wc.hInstance = hInstance;
@@ -652,6 +555,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     RegisterClass(&wc_false);
 
     HWND window = WIN_create_window(wc_false, window_display_width, window_display_height);
+
     HDC device_context = GetDC(window);
 
     PIXELFORMATDESCRIPTOR pixel_format = { 0 };
@@ -709,7 +613,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
     render_context = WIN_create_opengl_context(device_context);
 
-    glEnable(GL_TEXTURE_2D);
 
     struct Memory memory;
     memory.size = 50 * megabyte;
@@ -731,88 +634,129 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     temp_section.used = 0;
     temp_section.buffer = alloc_push(&memory, temp_section.size);
 
+
     struct AppState *app_state = (struct AppState*)alloc_push(&perm_section, sizeof(struct AppState));
-    app_state->renderer_sw = false;
+    app_state->renderer_sw = true;
 
     struct StoredMesh cube_mesh = { 0 };
     load_ply("assets/sphere_q2.ply", &cube_mesh, &perm_section, &temp_section);
     struct OpenGLMesh opengl_cube_mesh = load_opengl_mesh(&cube_mesh);
 
+
     struct OpenGLShader opengl_shader;
 
+    glEnable(GL_TEXTURE_2D);
     glViewport(0, 0, window_display_width, window_display_height);
     glEnable(GL_DEPTH_TEST);
 
-    uint32 vertex_shader;
-    vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    struct ReadFileResult vertex_shader_src = read_string("assets/default.vertex", &temp_section);
-    if (vertex_shader_src.status != READ_FILE_SUCCESS)
     {
-        printf("Error loading vertex shader.\n");
-        exit(-1);
-    }
-    glShaderSource(vertex_shader, 1, (const GLchar* const*)&vertex_shader_src.buffer, NULL);
-    glCompileShader(vertex_shader);
-    int successful;
-    char info[512];
-    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
-    if (!successful)
-    {
-        glGetShaderInfoLog(vertex_shader, 512, NULL, info);
-        printf("Error compiling vertex shader:\n%s\n", info);
-        exit(-1);
+        uint32 vertex_shader;
+        vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+        struct ReadFileResult vertex_shader_src = read_string("assets/default.vertex", &temp_section);
+        if (vertex_shader_src.status != READ_FILE_SUCCESS)
+        {
+            printf("Error loading vertex shader.\n");
+            exit(-1);
+        }
+        glShaderSource(vertex_shader, 1, (const GLchar* const*)&vertex_shader_src.buffer, NULL);
+        glCompileShader(vertex_shader);
+        int successful;
+        char info[512];
+        glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &successful);
+        if (!successful)
+        {
+            glGetShaderInfoLog(vertex_shader, 512, NULL, info);
+            printf("Error compiling vertex shader:\n%s\n", info);
+            exit(-1);
+        }
+
+        uint32 fragment_shader;
+        fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+        struct ReadFileResult fragment_shader_src = read_string("assets/default.fragment", &temp_section);
+        if (fragment_shader_src.status != READ_FILE_SUCCESS)
+        {
+            printf("Error loading fragment shader.\n");
+            exit(-1);
+        }
+        glShaderSource(fragment_shader, 1, (const GLchar* const*)&fragment_shader_src.buffer, NULL);
+        glCompileShader(fragment_shader);
+        glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
+        if (!successful)
+        {
+            glGetShaderInfoLog(fragment_shader, 512, NULL, info);
+            printf("Error compiling fragment shader:\n%s\n", info);
+            exit(-1);
+        }
+
+        opengl_shader.id = glCreateProgram();
+        glAttachShader(opengl_shader.id, vertex_shader);
+        glAttachShader(opengl_shader.id, fragment_shader);
+        glLinkProgram(opengl_shader.id);
+        glGetProgramiv(opengl_shader.id, GL_LINK_STATUS, &successful);
+        if (!successful)
+        {
+            glGetProgramInfoLog(opengl_shader.id, 512, NULL, info);
+            printf("Error linking shader program.\n");
+            exit(-1);
+        }
+        
+        glDeleteShader(vertex_shader);
+        glDeleteShader(fragment_shader);
+
+        opengl_shader.u_model = glGetUniformLocation(opengl_shader.id, "u_model");
+        opengl_shader.u_normal_model = glGetUniformLocation(opengl_shader.id, "u_normal_model");
+        opengl_shader.u_view = glGetUniformLocation(opengl_shader.id, "u_view");
+        opengl_shader.u_proj = glGetUniformLocation(opengl_shader.id, "u_proj");
+        opengl_shader.u_object_color = glGetUniformLocation(opengl_shader.id, "u_object_color");
+        opengl_shader.u_ambient_color = glGetUniformLocation(opengl_shader.id, "u_ambient_color");
+        opengl_shader.u_ambient_amount = glGetUniformLocation(opengl_shader.id, "u_ambient_amount");
+        opengl_shader.u_light_pos = glGetUniformLocation(opengl_shader.id, "u_light_pos");
+        opengl_shader.u_light_color = glGetUniformLocation(opengl_shader.id, "u_light_color");
     }
 
-    uint32 fragment_shader;
-    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    struct ReadFileResult fragment_shader_src = read_string("assets/default.fragment", &temp_section);
-    if (fragment_shader_src.status != READ_FILE_SUCCESS)
-    {
-        printf("Error loading fragment shader.\n");
-        exit(-1);
-    }
-    glShaderSource(fragment_shader, 1, (const GLchar* const*)&fragment_shader_src.buffer, NULL);
-    glCompileShader(fragment_shader);
-    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &successful);
-    if (!successful)
-    {
-        glGetShaderInfoLog(fragment_shader, 512, NULL, info);
-        printf("Error compiling fragment shader:\n%s\n", info);
-        exit(-1);
-    }
-
-    opengl_shader.id = glCreateProgram();
-    glAttachShader(opengl_shader.id, vertex_shader);
-    glAttachShader(opengl_shader.id, fragment_shader);
-    glLinkProgram(opengl_shader.id);
-    glGetProgramiv(opengl_shader.id, GL_LINK_STATUS, &successful);
-    if (!successful)
-    {
-        glGetProgramInfoLog(opengl_shader.id, 512, NULL, info);
-        printf("Error linking shader program.\n");
-        exit(-1);
-    }
-    
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-
-    opengl_shader.u_model = glGetUniformLocation(opengl_shader.id, "u_model");
-    opengl_shader.u_normal_model = glGetUniformLocation(opengl_shader.id, "u_normal_model");
-    opengl_shader.u_view = glGetUniformLocation(opengl_shader.id, "u_view");
-    opengl_shader.u_proj = glGetUniformLocation(opengl_shader.id, "u_proj");
-    opengl_shader.u_object_color = glGetUniformLocation(opengl_shader.id, "u_object_color");
-    opengl_shader.u_ambient_color = glGetUniformLocation(opengl_shader.id, "u_ambient_color");
-    opengl_shader.u_ambient_amount = glGetUniformLocation(opengl_shader.id, "u_ambient_amount");
-    opengl_shader.u_light_pos = glGetUniformLocation(opengl_shader.id, "u_light_pos");
-    opengl_shader.u_light_color = glGetUniformLocation(opengl_shader.id, "u_light_color");
 
     struct Framebuffer framebuffer;
     framebuffer.width = screen_width;
     framebuffer.height = screen_height;
-    framebuffer.pixel_size = 2;
+    framebuffer.pixel_size = 4;
     framebuffer.pixel_num = framebuffer.width * framebuffer.height;
     framebuffer.size = framebuffer.pixel_num * framebuffer.pixel_size;
     framebuffer.data = alloc_push(&perm_section, framebuffer.size);
+
+
+    float32 pixels_to_world_units = 1/2.0f;
+
+    vec3f camera_pos = make_vec3f(0.0f, 0.0f, 0.0f);
+    vec3f camera_forward = make_vec3f(0.0f, 0.0f, 1.0f);
+    vec3f camera_right = make_vec3f(1.0f, 0.0f, 0.0f);
+    vec3f camera_up = make_vec3f(0.0f, 1.0f, 0.0f);
+    float32 focal_len = 5.0f;
+    float32 near_width = 3.84f;
+    float32 near_height = 2.56f;
+    float32 aspect_ratio = near_width/near_height;
+    vec3f near_center = add_vec3f(camera_pos, scale_vec3f(camera_forward, focal_len));
+    vec3f near_left = sub_vec3f(near_center, scale_vec3f(camera_right, near_width/2.0f));
+    vec3f near_right = add_vec3f(near_center, scale_vec3f(camera_right, near_width/2.0f));
+    vec3f near_top = add_vec3f(near_center, scale_vec3f(camera_up, near_height/2.0f));
+    vec3f near_bottom = sub_vec3f(near_center, scale_vec3f(camera_up, near_height/2.0f));
+    float32 pixel_width = near_width / (float32)screen_width;
+    float32 pixel_height = near_height / (float32)screen_height;
+    for (uint32 y=0; y<screen_height; y++)
+    {
+        for (uint32 x=0; x<screen_width; x++)
+        {
+            vec3f pixel_pos = 
+                add_vec3f(
+                    add_vec3f(
+                        scale_vec3f(camera_right, pixel_width * x - near_width/2.0f),
+                        scale_vec3f(camera_up, pixel_height * y - near_height/2.0f)),
+                    scale_vec3f(camera_forward, focal_len));
+
+            vec3f ray_origin = camera_pos;
+            vec3f ray_dir = sub_vec3f(pixel_pos, camera_pos);
+        }
+    }
+
 
     LARGE_INTEGER perf_freq;
     QueryPerformanceFrequency(&perf_freq);
@@ -820,14 +764,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     srand((uint32)time(NULL));
     uint32 seed = rand();
 
-    ShowWindow(window, nCmdShow);
-
     temp_section.used = 0;
 
 	float64 dt = 0;
 
     float32 goose = 0;
 
+    ShowWindow(window, nCmdShow);
     int running = true;
     while (running)
     {
@@ -852,18 +795,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         if (app_state->renderer_sw)
         {
             glBindTexture(GL_TEXTURE_2D, 1);
+
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
             for (uint32 p = 0; p < framebuffer.pixel_num; p++)
             {
-                uint16 *pixel = (uint16*)framebuffer.data + p;
-                *pixel = Mpixel_word(0, 255, 0);
+                uint32 *pixel = (uint32*)framebuffer.data + p;
+                *pixel = 0xFF0000FF;
             }
 
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8,
                 framebuffer.width, framebuffer.height,
-                0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, framebuffer.data);
+                0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, framebuffer.data);
             glBegin(GL_TRIANGLES);
             glTexCoord2i(0, 0); glVertex2i(-1, -1);
             glTexCoord2i(1, 0); glVertex2i(1, -1);
@@ -920,8 +864,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         LARGE_INTEGER ticks_elapsed;
         ticks_elapsed.QuadPart = counter_end.QuadPart - counter_start.QuadPart;
         dt = (double)ticks_elapsed.QuadPart / (double)perf_freq.QuadPart;
-        printf("Seconds elapsed: %f, Ticks elapsed: %I64d, Ticks per second: %I64d\n",
-            dt, ticks_elapsed, perf_freq.QuadPart);
+        /*printf("Seconds elapsed: %f, Ticks elapsed: %I64d, Ticks per second: %I64d\n",
+            dt, ticks_elapsed, perf_freq.QuadPart);*/
     }
 
     return 0;
