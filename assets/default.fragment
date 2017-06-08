@@ -1,3 +1,5 @@
+#version 330
+
 #define d_HasLighting
 
 

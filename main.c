@@ -879,15 +879,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             mat4 model = mult_mat4(
-                make_translate_mat4(make_vec3f(2*cos(goose), 0, -5 + 2*sin(goose))),
+                make_translate_mat4(make_vec3f(2*cos(2*M_PI*goose), 0, -5 + 2*sin(2*M_PI*goose))),
                 make_rotate_mat4(make_vec3f(0, 1, 0), goose));
             mat3 normal_model = transpose_mat3(inverse_mat3(make_mat3_from_mat4(model)));
             mat4 view = make_identity_mat4();
             mat4 proj = make_persp_proj_mat4(0.7, (float32)screen_width/screen_height, 0.1, 50);
             goose += 1 * dt;
-            if (goose > 2*M_PI)
+            if (goose > 1)
             {
-                goose -= 2*M_PI;
+                goose -= 1;
             }
 
             vec3f object_color = make_vec3f(1.0, 1.0, 1.0);
@@ -920,10 +920,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         LARGE_INTEGER ticks_elapsed;
         ticks_elapsed.QuadPart = counter_end.QuadPart - counter_start.QuadPart;
         dt = (double)ticks_elapsed.QuadPart / (double)perf_freq.QuadPart;
-		/*
         printf("Seconds elapsed: %f, Ticks elapsed: %I64d, Ticks per second: %I64d\n",
             dt, ticks_elapsed, perf_freq.QuadPart);
-		*/
     }
 
     return 0;
